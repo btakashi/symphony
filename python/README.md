@@ -30,6 +30,20 @@ uv run poe typecheck
 uv run poe test
 ```
 
+## Pre-Commit Hooks
+
+Install the repository hook from this directory:
+
+```bash
+uv run pre-commit install -c ../.pre-commit-config.yaml
+```
+
+Run the hook suite manually:
+
+```bash
+uv run pre-commit run --config ../.pre-commit-config.yaml --all-files
+```
+
 Clean generated caches:
 
 ```bash

@@ -50,6 +50,13 @@ uv sync
 uv run poe check
 ```
 
+Install Git pre-commit hooks from the Python environment:
+
+```bash
+uv run pre-commit install -c ../.pre-commit-config.yaml
+uv run pre-commit run --config ../.pre-commit-config.yaml --all-files
+```
+
 Useful tasks:
 
 - `uv run poe format-check`
