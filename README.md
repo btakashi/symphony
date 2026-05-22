@@ -34,6 +34,30 @@ help with the setup:
 > Set up Symphony for my repository based on
 > https://github.com/openai/symphony/blob/main/elixir/README.md
 
+### Experimental design notes
+
+- [Claude Code runner plan: routines, channels, and headless](docs/claude-runner-routines-channels-plan.md)
+- [Python Symphony plan for Claude runners](docs/python-claude-symphony-plan.md)
+
+### Python development
+
+The Python implementation lives in [`python/`](python/). Use `uv` for setup and Poe tasks from
+`pyproject.toml` for routine commands:
+
+```bash
+cd python
+uv sync
+uv run poe check
+```
+
+Useful tasks:
+
+- `uv run poe format-check`
+- `uv run poe lint`
+- `uv run poe typecheck`
+- `uv run poe test`
+- `uv run poe clean`
+
 ---
 
 ## License
