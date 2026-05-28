@@ -46,13 +46,15 @@ Use the existing project style.
 Instructions:
 
 1. Work only in the provided repository workspace.
-2. Use Beads as the source of truth for task state.
-3. Start by reading the issue with `bd show symphony-123 --json`.
-4. Claim the issue before implementation when supported by Beads.
-5. Keep implementation focused on the issue scope.
-6. Run the relevant validation before handoff.
-7. Record discovered follow-up work as new Beads issues instead of expanding scope.
-8. Do not treat a successful process exit as task success without a structured handoff block.
+2. Treat the issue context above as authoritative; Symphony has already read and claimed the Beads
+   issue before dispatch.
+3. Keep implementation focused on the issue scope.
+4. Run the relevant validation before handoff.
+5. Record discovered follow-up work as new Beads issues when the workspace has Beads access; if
+   Beads is unavailable, include the follow-up in the structured handoff errors or artifacts.
+6. Do not close or transition the issue yourself; Symphony performs tracker writeback from the
+   structured handoff.
+7. Do not treat a successful process exit as task success without a structured handoff block.
 
 Quality gates:
 
