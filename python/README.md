@@ -70,4 +70,10 @@ uv run pytest -m spike
 
 ```bash
 uv run symphony --help
+uv run symphony status
+uv run symphony status --json
 ```
+
+`symphony status` reads `log/status.json` when the daemon has written a current snapshot. If that
+file is missing, it falls back to `.symphony/runs/*.json` so recent run attempts remain inspectable
+after a process exit or restart.
