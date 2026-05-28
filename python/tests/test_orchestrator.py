@@ -7,7 +7,7 @@ import pytest
 
 from symphony.config import WorkspaceConfig
 from symphony.log_events import EventLogger, StatusSnapshotStore
-from symphony.models import Issue, WorkflowDefinition
+from symphony.models import Issue, WorkflowDefinition, Workspace
 from symphony.orchestrator import Orchestrator
 from symphony.run_ledger import RunLedger
 from symphony.runner.fake import FakeRunner, FakeRunScript
@@ -135,6 +135,37 @@ async def test_orchestrator_runs_ready_issue_through_fake_runner(tmp_path: Path)
 
 
 @pytest.mark.asyncio
+async def test_orchestrator_prepares_new_workspace_before_runner(tmp_path: Path) -> None:
+    tracker = MemoryTracker([issue()])
+    runner = FakeRunner()
+    prepared_paths: list[Path] = []
+
+    async def prepare(workspace: Workspace) -> None:
+        prepared_paths.append(workspace.path)
+        (workspace.path / "prepared.txt").write_text("ready", encoding="utf-8")
+
+    orch = Orchestrator(
+        tracker=tracker,
+        tracker_kind="beads",
+        workspace_manager=WorkspaceManager(WorkspaceConfig(root=tmp_path / "workspaces")),
+        workflow=workflow(),
+        runner=runner,
+        run_ledger=RunLedger(tmp_path / ".symphony" / "runs"),
+        event_logger=EventLogger(tmp_path / "log" / "events.jsonl"),
+        status_store=StatusSnapshotStore(tmp_path / "log" / "status.json"),
+        workspace_preparer=prepare,
+        clock=Clock(),
+    )
+
+    result = await orch.run_once()
+
+    assert result is not None
+    workspace_path = tmp_path / "workspaces" / "symphony-123"
+    assert prepared_paths == [workspace_path]
+    assert (workspace_path / "prepared.txt").read_text(encoding="utf-8") == "ready"
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_keeps_waiting_run_active_in_status_snapshot(tmp_path: Path) -> None:
     tracker = MemoryTracker([issue()])
     runner = FakeRunner(scripts_by_identifier={"symphony-123": [FakeRunScript(outcome="waiting")]})
@@ -154,3 +185,16 @@ async def test_orchestrator_keeps_waiting_run_active_in_status_snapshot(tmp_path
     assert snapshot is not None
     assert len(snapshot.active_runs) == 1
     assert snapshot.active_runs[0].status == "waiting_for_permission"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_waits_for_running_runner_when_requested(tmp_path: Path) -> None:
+    tracker = MemoryTracker([issue()])
+    runner = FakeRunner(scripts_by_identifier={"symphony-123": [FakeRunScript(running_polls=2)]})
+    orch = orchestrator(tmp_path, tracker=tracker, runner=runner)
+
+    result = await orch.run_once(wait_for_completion=True, poll_interval_seconds=0)
+
+    assert result is not None
+    assert result.status == "succeeded"
+    assert tracker.state_updates == [("symphony-123", "in_progress"), ("symphony-123", "closed")]
