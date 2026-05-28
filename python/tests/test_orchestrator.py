@@ -7,7 +7,7 @@ import pytest
 
 from symphony.config import WorkspaceConfig
 from symphony.log_events import EventLogger, StatusSnapshotStore
-from symphony.models import Issue, WorkflowDefinition
+from symphony.models import Issue, WorkflowDefinition, Workspace
 from symphony.orchestrator import Orchestrator
 from symphony.run_ledger import RunLedger
 from symphony.runner.fake import FakeRunner, FakeRunScript
@@ -132,6 +132,37 @@ async def test_orchestrator_runs_ready_issue_through_fake_runner(tmp_path: Path)
     snapshot = StatusSnapshotStore(tmp_path / "log" / "status.json").read()
     assert snapshot is not None
     assert snapshot.active_runs == ()
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_prepares_new_workspace_before_runner(tmp_path: Path) -> None:
+    tracker = MemoryTracker([issue()])
+    runner = FakeRunner()
+    prepared_paths: list[Path] = []
+
+    async def prepare(workspace: Workspace) -> None:
+        prepared_paths.append(workspace.path)
+        (workspace.path / "prepared.txt").write_text("ready", encoding="utf-8")
+
+    orch = Orchestrator(
+        tracker=tracker,
+        tracker_kind="beads",
+        workspace_manager=WorkspaceManager(WorkspaceConfig(root=tmp_path / "workspaces")),
+        workflow=workflow(),
+        runner=runner,
+        run_ledger=RunLedger(tmp_path / ".symphony" / "runs"),
+        event_logger=EventLogger(tmp_path / "log" / "events.jsonl"),
+        status_store=StatusSnapshotStore(tmp_path / "log" / "status.json"),
+        workspace_preparer=prepare,
+        clock=Clock(),
+    )
+
+    result = await orch.run_once()
+
+    assert result is not None
+    workspace_path = tmp_path / "workspaces" / "symphony-123"
+    assert prepared_paths == [workspace_path]
+    assert (workspace_path / "prepared.txt").read_text(encoding="utf-8") == "ready"
 
 
 @pytest.mark.asyncio

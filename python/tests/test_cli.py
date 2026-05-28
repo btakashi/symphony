@@ -2,11 +2,13 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from symphony.cli import app
 from symphony.log_events import StatusSnapshotStore
-from symphony.models import RunAttempt, RunMetadata, StatusSnapshot
+from symphony.models import Issue, RunAttempt, RunMetadata, StatusSnapshot
+from symphony.orchestrator import OrchestratorCycleResult
 from symphony.run_ledger import RunLedger
 
 
@@ -17,6 +19,44 @@ def test_cli_help() -> None:
 
     assert result.exit_code == 0
     assert "Python implementation of Symphony" in result.output
+
+
+def test_run_once_reports_no_ready_issues(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    workflow = tmp_path / "WORKFLOW.md"
+    workflow.write_text("---\n---\n\nDo work.\n", encoding="utf-8")
+
+    async def fake_run_once(workflow_path: Path) -> None:
+        assert workflow_path == workflow
+        return None
+
+    monkeypatch.setattr("symphony.cli.run_once_from_workflow", fake_run_once)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["run-once", "--workflow", str(workflow)])
+
+    assert result.exit_code == 0
+    assert "No ready issues." in result.output
+
+
+def test_run_once_reports_dispatched_issue(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    workflow = tmp_path / "WORKFLOW.md"
+    workflow.write_text("---\n---\n\nDo work.\n", encoding="utf-8")
+
+    async def fake_run_once(workflow_path: Path) -> OrchestratorCycleResult:
+        assert workflow_path == workflow
+        return OrchestratorCycleResult(
+            issue=Issue(id="issue-1", identifier="SYMP-1", title="Do work", state="open"),
+            run_id="run-1",
+            status="succeeded",
+        )
+
+    monkeypatch.setattr("symphony.cli.run_once_from_workflow", fake_run_once)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["run-once", "--workflow", str(workflow)])
+
+    assert result.exit_code == 0
+    assert "SYMP-1: succeeded (run-1)" in result.output
 
 
 def test_status_reads_snapshot_before_ledger(tmp_path: Path) -> None:
