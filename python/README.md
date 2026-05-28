@@ -30,11 +30,31 @@ uv run poe typecheck
 uv run poe test
 ```
 
+## Pre-Commit Hooks
+
+Install the repository hook from this directory:
+
+```bash
+uv run pre-commit install -c ../.pre-commit-config.yaml
+```
+
+Run the hook suite manually:
+
+```bash
+uv run pre-commit run --config ../.pre-commit-config.yaml --all-files
+```
+
 Clean generated caches:
 
 ```bash
 uv run poe clean
 ```
+
+## Branch And PR Workflow
+
+Use stacked PRs for dependent Python Symphony changes. See
+[`docs/stacked-pr-workflow.md`](../docs/stacked-pr-workflow.md) for Graphite CLI usage, plain
+Git/GitHub fallback commands, branch target conventions, and fork behavior.
 
 ## Optional Tests
 
@@ -50,4 +70,16 @@ uv run pytest -m spike
 
 ```bash
 uv run symphony --help
+uv run symphony run-once --workflow ../WORKFLOW.md
+uv run symphony status
+uv run symphony status --json
 ```
+
+`symphony run-once` loads `WORKFLOW.md`, checks the local Beads CLI, claims the first ready issue,
+creates or reuses its workspace, runs `hooks.after_create` for new workspaces, and dispatches the
+issue through the configured `claude.headless` runner. Fresh run-once workspaces are created as git
+worktrees so the dispatched agent retains local Beads access from inside the workspace.
+
+`symphony status` reads `log/status.json` when the daemon has written a current snapshot. If that
+file is missing, it falls back to `.symphony/runs/*.json` so recent run attempts remain inspectable
+after a process exit or restart.

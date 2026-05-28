@@ -1,0 +1,30 @@
+repos:
+  - repo: local
+    hooks:
+      - id: python-format-check
+        name: Python format check
+        entry: bash -c 'cd python && uv run poe format-check'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: python-lint
+        name: Python lint
+        entry: bash -c 'cd python && uv run poe lint'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: python-typecheck
+        name: Python typecheck
+        entry: bash -c 'cd python && uv run poe typecheck'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: python-unit-tests
+        name: Python unit tests
+        entry: bash -c 'cd python && uv run poe test'
+        language: system
+        pass_filenames: false
+        always_run: true

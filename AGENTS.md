@@ -20,6 +20,8 @@ reference implementation intact.
 - Use basedpyright for type checking.
 - Use pytest for unit, integration, live, and spike tests. The default Poe `test` task includes
   coverage reporting.
+- Use pre-commit for local Git hooks that run Python format check, lint, typecheck, and unit tests
+  before commits.
 - Use Beads locally through the `bd` CLI.
 - Prefer putting Python tool configuration in `pyproject.toml` whenever the tool supports it. Avoid
   separate config files unless the tool cannot be configured cleanly from `pyproject.toml`.
@@ -33,6 +35,8 @@ reference implementation intact.
   - `cd python && uv run poe typecheck`
   - `cd python && uv run poe test`
   - `cd python && uv run poe clean`
+  - `cd python && uv run pre-commit install -c ../.pre-commit-config.yaml`
+  - `cd python && uv run pre-commit run --config ../.pre-commit-config.yaml --all-files`
 - Prefer narrow command approvals. Good whitelist prefixes for this repo include:
   - `uv run poe`
   - `uv run ruff`

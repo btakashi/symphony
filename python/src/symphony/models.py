@@ -75,6 +75,23 @@ class RunAttempt(SymphonyModel):
     error: str | None = None
 
 
+class RunMetadata(SymphonyModel):
+    provider: str
+    mode: str
+    tracker_kind: str
+    issue_id: str
+    issue_identifier: str
+    run_id: str
+    attempt: int | None = None
+    workspace_path: Path
+    status: RunStatus
+    started_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None = None
+    error: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class RunEvent(SymphonyModel):
     provider: str
     mode: str
