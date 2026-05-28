@@ -50,6 +50,12 @@ Clean generated caches:
 uv run poe clean
 ```
 
+## Branch And PR Workflow
+
+Use stacked PRs for dependent Python Symphony changes. See
+[`docs/stacked-pr-workflow.md`](../docs/stacked-pr-workflow.md) for Graphite CLI usage, plain
+Git/GitHub fallback commands, branch target conventions, and fork behavior.
+
 ## Optional Tests
 
 Optional suites can be run through pytest directly:
