@@ -70,9 +70,14 @@ uv run pytest -m spike
 
 ```bash
 uv run symphony --help
+uv run symphony run-once --workflow ../WORKFLOW.md
 uv run symphony status
 uv run symphony status --json
 ```
+
+`symphony run-once` loads `WORKFLOW.md`, checks the local Beads CLI, claims the first ready issue,
+creates or reuses its workspace, runs `hooks.after_create` for new workspaces, and dispatches the
+issue through the configured `claude.headless` runner.
 
 `symphony status` reads `log/status.json` when the daemon has written a current snapshot. If that
 file is missing, it falls back to `.symphony/runs/*.json` so recent run attempts remain inspectable

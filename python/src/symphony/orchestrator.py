@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -16,6 +16,7 @@ from symphony.models import (
     RunStatus,
     StatusSnapshot,
     WorkflowDefinition,
+    Workspace,
 )
 from symphony.prompt import build_prompt
 from symphony.run_ledger import RunLedger
@@ -24,6 +25,7 @@ from symphony.tracker.base import Tracker
 from symphony.workspace import WorkspaceManager
 
 Clock = Callable[[], datetime]
+WorkspacePreparer = Callable[[Workspace], Awaitable[None]]
 _ACTIVE_STATUSES: set[RunStatus] = {"queued", "starting", "running", "waiting_for_permission"}
 _TERMINAL_STATUSES: set[RunStatus] = {"succeeded", "failed", "cancelled"}
 
@@ -51,6 +53,7 @@ class Orchestrator:
         run_ledger: RunLedger,
         event_logger: EventLogger,
         status_store: StatusSnapshotStore,
+        workspace_preparer: WorkspacePreparer | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._tracker = tracker
@@ -61,6 +64,7 @@ class Orchestrator:
         self._run_ledger = run_ledger
         self._event_logger = event_logger
         self._status_store = status_store
+        self._workspace_preparer = workspace_preparer
         self._clock = clock or _utc_now
 
     async def run_once(self, *, attempt: int | None = None) -> OrchestratorCycleResult | None:
@@ -75,6 +79,8 @@ class Orchestrator:
         await self._tracker.update_issue_state(issue.id, "in_progress")
 
         workspace = self._workspace_manager.create_for_issue(issue.identifier)
+        if workspace.created_now and self._workspace_preparer is not None:
+            await self._workspace_preparer(workspace)
         prompt = build_prompt(self._workflow, issue, attempt=attempt)
         started_at = self._clock()
         run_ref = await self._runner.start_run(

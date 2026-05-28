@@ -25,6 +25,8 @@ claude:
     executable: claude
     args:
       - -p
+      - --allowedTools
+      - Read,Write,Edit,Bash
     prompt_transport: stdin
     completion_artifact: structured_handoff
     timeout_seconds: 7200

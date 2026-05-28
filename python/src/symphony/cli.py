@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Annotated
@@ -11,6 +12,7 @@ import typer
 from symphony.log_events import StatusSnapshotStore
 from symphony.models import RunMetadata, StatusSnapshot
 from symphony.run_ledger import RunLedger
+from symphony.runtime import find_workflow_path, run_once_from_workflow
 from symphony.runtime_paths import RUN_LEDGER_DIR, STATUS_SNAPSHOT_PATH
 
 app = typer.Typer(help="Python implementation of Symphony.")
@@ -19,6 +21,29 @@ app = typer.Typer(help="Python implementation of Symphony.")
 @app.callback()
 def root() -> None:
     """Run the Symphony command-line interface."""
+
+
+@app.command("run-once")
+def run_once(
+    workflow_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--workflow",
+            help="Path to WORKFLOW.md. Defaults to searching from the current directory.",
+        ),
+    ] = None,
+) -> None:
+    """Run one ready issue through the configured local Symphony workflow."""
+
+    workflow = workflow_path or find_workflow_path(Path.cwd())
+    result = asyncio.run(run_once_from_workflow(workflow))
+    if result is None:
+        typer.echo("No ready issues.")
+        return
+
+    typer.echo(f"{result.issue.identifier}: {result.status} ({result.run_id})")
+    if result.status == "failed":
+        raise typer.Exit(code=1)
 
 
 @app.command("status")
