@@ -37,12 +37,21 @@ whether to build, defer, or add fallback behavior.
 The Python test suite includes gated spike tests that are skipped by the default Poe `test` task.
 Run them only from a disposable workspace with the required local credentials available.
 
-Headless structured handoff:
+Headless structured handoff and workspace edit:
 
 ```bash
 cd python
 SYMPHONY_RUN_CLAUDE_HEADLESS_SPIKE=1 uv run pytest \
   tests/test_claude_headless_live_spike.py \
+  -m "live and spike"
+```
+
+To run only the workspace edit check:
+
+```bash
+cd python
+SYMPHONY_RUN_CLAUDE_HEADLESS_SPIKE=1 uv run pytest \
+  tests/test_claude_headless_live_spike.py::test_real_claude_headless_workspace_edit_spike \
   -m "live and spike"
 ```
 
