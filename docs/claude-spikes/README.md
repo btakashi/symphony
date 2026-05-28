@@ -31,3 +31,20 @@ whether to build, defer, or add fallback behavior.
 - Headless subprocess lifecycle, timeout, cancellation, and structured completion parsing.
 - Headless permission and subagent behavior.
 - Tracker writeback paths for Jira, ClickUp, GitHub Issues, and Dolt.
+
+## Repeatable Spike Tests
+
+The Python test suite includes gated spike tests that are skipped by the default Poe `test` task.
+Run them only from a disposable workspace with the required local credentials available.
+
+Headless structured handoff:
+
+```bash
+cd python
+SYMPHONY_RUN_CLAUDE_HEADLESS_SPIKE=1 uv run pytest \
+  tests/test_claude_headless_live_spike.py \
+  -m "live and spike"
+```
+
+Record the date, environment, stdout/stderr log paths, result, and failure modes in a new file in
+this folder after each real spike run.
