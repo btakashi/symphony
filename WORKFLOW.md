@@ -18,7 +18,8 @@ hooks:
     name="$(basename "$workspace")"
     cd "$parent"
     rmdir "$workspace"
-    bd -C /Users/brian/Code/symphony worktree create "$workspace" --branch "symphony-workspace-$name"
+    cd /Users/brian/Code/symphony
+    bd worktree create "$workspace" --branch "symphony-workspace-$name"
     cd "$workspace/python" && uv sync
 agent:
   provider: claude
