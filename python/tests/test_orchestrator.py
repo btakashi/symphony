@@ -185,3 +185,16 @@ async def test_orchestrator_keeps_waiting_run_active_in_status_snapshot(tmp_path
     assert snapshot is not None
     assert len(snapshot.active_runs) == 1
     assert snapshot.active_runs[0].status == "waiting_for_permission"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_waits_for_running_runner_when_requested(tmp_path: Path) -> None:
+    tracker = MemoryTracker([issue()])
+    runner = FakeRunner(scripts_by_identifier={"symphony-123": [FakeRunScript(running_polls=2)]})
+    orch = orchestrator(tmp_path, tracker=tracker, runner=runner)
+
+    result = await orch.run_once(wait_for_completion=True, poll_interval_seconds=0)
+
+    assert result is not None
+    assert result.status == "succeeded"
+    assert tracker.state_updates == [("symphony-123", "in_progress"), ("symphony-123", "closed")]

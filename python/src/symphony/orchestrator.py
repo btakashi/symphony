@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -67,7 +68,13 @@ class Orchestrator:
         self._workspace_preparer = workspace_preparer
         self._clock = clock or _utc_now
 
-    async def run_once(self, *, attempt: int | None = None) -> OrchestratorCycleResult | None:
+    async def run_once(
+        self,
+        *,
+        attempt: int | None = None,
+        wait_for_completion: bool = False,
+        poll_interval_seconds: float = 1,
+    ) -> OrchestratorCycleResult | None:
         """Dispatch the first ready issue and persist the resulting run state."""
 
         issues = await self._tracker.fetch_candidate_issues()
@@ -109,7 +116,11 @@ class Orchestrator:
         self._run_ledger.write(metadata)
 
         events_seen = await self._append_new_events(run_ref, events_seen=0)
-        status = await self._runner.poll_run(run_ref)
+        status = await self._poll_until_ready(
+            run_ref,
+            wait_for_completion=wait_for_completion,
+            poll_interval_seconds=poll_interval_seconds,
+        )
         events_seen = await self._append_new_events(run_ref, events_seen=events_seen)
         del events_seen
 
@@ -151,6 +162,19 @@ class Orchestrator:
         for event in events[events_seen:]:
             self._event_logger.append(event)
         return len(events)
+
+    async def _poll_until_ready(
+        self,
+        run_ref: RunRef,
+        *,
+        wait_for_completion: bool,
+        poll_interval_seconds: float,
+    ) -> RunStatus:
+        while True:
+            status = await self._runner.poll_run(run_ref)
+            if not wait_for_completion or status not in {"queued", "starting", "running"}:
+                return status
+            await asyncio.sleep(poll_interval_seconds)
 
     def _write_snapshot(self, active_runs: tuple[RunAttempt, ...]) -> None:
         self._status_store.write(

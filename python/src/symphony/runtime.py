@@ -33,7 +33,7 @@ async def run_once_from_workflow(
     tracker = _build_tracker(config)
     await tracker.check_supported_version()
     orchestrator = _build_orchestrator(workflow, config, tracker)
-    return await orchestrator.run_once()
+    return await orchestrator.run_once(wait_for_completion=True)
 
 
 def find_workflow_path(start: Path) -> Path:
