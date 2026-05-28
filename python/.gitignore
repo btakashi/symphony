@@ -4,3 +4,5 @@
 .coverage
 htmlcov/
 __pycache__/
+.symphony/
+log/
