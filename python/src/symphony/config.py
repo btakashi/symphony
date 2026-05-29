@@ -55,12 +55,20 @@ class TrackerConfig(StrictConfigModel):
     kind: Literal[
         "beads",
         "github",
+        "jira",
         "memory",
     ]
     command: str = "bd"
     working_directory: Path | None = None
     repository: str | None = None
+    url: str | None = None
+    project: str | None = None
+    username: str | None = None
+    api_token: str | None = None
+    jql: str | None = None
     in_progress_label: str = "symphony:in-progress"
+    in_progress_transition: str = "In Progress"
+    closed_transition: str = "Done"
     active_states: list[str] = Field(default_factory=list)
     terminal_states: list[str] = Field(default_factory=list)
 
@@ -75,6 +83,15 @@ class TrackerConfig(StrictConfigModel):
     def validate_tracker_fields(self) -> TrackerConfig:
         if self.kind == "github" and not self.repository:
             raise ValueError("tracker.repository is required when tracker.kind=github")
+        if self.kind == "jira":
+            missing = [
+                field
+                for field in ("url", "project", "username", "api_token")
+                if not getattr(self, field)
+            ]
+            if missing:
+                names = ", ".join(f"tracker.{field}" for field in missing)
+                raise ValueError(f"{names} required when tracker.kind=jira")
         return self
 
 
