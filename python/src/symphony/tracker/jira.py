@@ -101,8 +101,12 @@ class JiraTracker:
     ) -> None:
         if config.kind != "jira":
             raise ValueError("JiraTracker requires tracker.kind=jira")
-        if not config.url or not config.project or not config.username or not config.api_token:
-            raise ValueError("JiraTracker requires url, project, username, and api_token")
+        if not config.url or not config.project or not config.api_token:
+            raise ValueError("JiraTracker requires url, project, and api_token")
+        if config.auth_mode == "basic" and not config.username:
+            raise ValueError("JiraTracker requires username when auth_mode=basic")
+        if config.auth_mode == "scoped" and not config.cloud_id:
+            raise ValueError("JiraTracker requires cloud_id when auth_mode=scoped")
         self._config = config
         self._runner = http_runner or run_http
 
@@ -203,6 +207,9 @@ class JiraTracker:
 
     @property
     def _base_url(self) -> str:
+        if self._config.auth_mode == "scoped":
+            assert self._config.cloud_id is not None
+            return f"https://api.atlassian.com/ex/jira/{self._config.cloud_id}"
         assert self._config.url is not None
         return self._config.url.rstrip("/")
 
@@ -218,14 +225,18 @@ class JiraTracker:
 
     @property
     def _headers(self) -> dict[str, str]:
-        assert self._config.username is not None
         assert self._config.api_token is not None
-        token = base64.b64encode(
-            f"{self._config.username}:{self._config.api_token}".encode()
-        ).decode()
+        if self._config.auth_mode == "scoped":
+            authorization = f"Bearer {self._config.api_token}"
+        else:
+            assert self._config.username is not None
+            token = base64.b64encode(
+                f"{self._config.username}:{self._config.api_token}".encode()
+            ).decode()
+            authorization = f"Basic {token}"
         return {
             "Accept": "application/json",
-            "Authorization": f"Basic {token}",
+            "Authorization": authorization,
             "Content-Type": "application/json",
         }
 

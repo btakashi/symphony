@@ -17,6 +17,17 @@ def tracker_config() -> TrackerConfig:
     )
 
 
+def scoped_tracker_config() -> TrackerConfig:
+    return TrackerConfig(
+        kind="jira",
+        auth_mode="scoped",
+        url="https://example.atlassian.net",
+        cloud_id="cloud-123",
+        project="SYMP",
+        api_token="token",
+    )
+
+
 def jira_issue(
     *,
     issue_id: str = "10001",
@@ -75,6 +86,20 @@ async def test_check_supported_version_calls_myself() -> None:
     assert method == "GET"
     assert url == "https://example.atlassian.net/rest/api/3/myself"
     assert headers["Authorization"].startswith("Basic ")
+    assert body is None
+
+
+@pytest.mark.asyncio
+async def test_scoped_auth_uses_atlassian_gateway_and_bearer_token() -> None:
+    http = FakeHttp([json_result({"accountId": "abc"})])
+    tracker = JiraTracker(scoped_tracker_config(), http_runner=http)
+
+    await tracker.check_supported_version()
+
+    method, url, headers, body = http.requests[0]
+    assert method == "GET"
+    assert url == "https://api.atlassian.com/ex/jira/cloud-123/rest/api/3/myself"
+    assert headers["Authorization"] == "Bearer token"
     assert body is None
 
 

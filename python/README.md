@@ -108,11 +108,12 @@ tracker:
 adding `in_progress_label`, filters that label out of future candidates, comments when requested,
 and closes issues after succeeded runs.
 
-Jira Cloud can be selected with REST API credentials:
+Jira Cloud can be selected with classic REST API credentials:
 
 ```yaml
 tracker:
   kind: jira
+  auth_mode: basic
   url: https://company.atlassian.net
   project: PROJ
   username: "$JIRA_USERNAME"
@@ -121,9 +122,25 @@ tracker:
   closed_transition: Done
 ```
 
+Scoped Jira API tokens use Atlassian's gateway URL and do not require a username:
+
+```yaml
+tracker:
+  kind: jira
+  auth_mode: scoped
+  url: https://company.atlassian.net
+  cloud_id: "$JIRA_CLOUD_ID"
+  project: PROJ
+  api_token: "$JIRA_API_TOKEN"
+  in_progress_transition: In Progress
+  closed_transition: Done
+```
+
 `tracker.kind=jira` checks `/rest/api/3/myself` before dispatch. By default it searches
 non-Done issues in the configured project with JQL, comments using Atlassian Document Format, and
-updates issue state by looking up the configured transition names.
+updates issue state by looking up the configured transition names. `auth_mode=basic` calls the
+configured site URL with HTTP Basic auth. `auth_mode=scoped` calls
+`https://api.atlassian.com/ex/jira/{cloud_id}` with Bearer auth.
 
 ## Smoke Tests
 
