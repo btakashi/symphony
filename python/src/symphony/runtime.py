@@ -12,7 +12,9 @@ from symphony.models import WorkflowDefinition, Workspace
 from symphony.orchestrator import Orchestrator, OrchestratorCycleResult, WorkspacePreparer
 from symphony.run_ledger import RunLedger
 from symphony.runner.claude_headless import ClaudeHeadlessRunner
+from symphony.tracker.base import Tracker
 from symphony.tracker.beads import BeadsTracker
+from symphony.tracker.github import GitHubTracker
 from symphony.workflow import load_workflow
 from symphony.workspace import WorkspaceManager
 
@@ -53,10 +55,8 @@ def find_workflow_path(start: Path) -> Path:
 def _build_orchestrator(
     workflow: WorkflowDefinition,
     config: ServiceConfig,
-    tracker: BeadsTracker,
+    tracker: Tracker,
 ) -> Orchestrator:
-    if config.tracker.kind != "beads":
-        raise SymphonyRuntimeError(f"Unsupported tracker.kind for run-once: {config.tracker.kind}")
     if config.agent.provider != "claude" or config.agent.mode != "headless":
         raise SymphonyRuntimeError(
             "run-once currently supports only agent.provider=claude mode=headless"
@@ -77,10 +77,12 @@ def _build_orchestrator(
     )
 
 
-def _build_tracker(config: ServiceConfig) -> BeadsTracker:
-    if config.tracker.kind != "beads":
-        raise SymphonyRuntimeError(f"Unsupported tracker.kind for run-once: {config.tracker.kind}")
-    return BeadsTracker(config.tracker)
+def _build_tracker(config: ServiceConfig) -> Tracker:
+    if config.tracker.kind == "beads":
+        return BeadsTracker(config.tracker)
+    if config.tracker.kind == "github":
+        return GitHubTracker(config.tracker)
+    raise SymphonyRuntimeError(f"Unsupported tracker.kind for run-once: {config.tracker.kind}")
 
 
 def _workspace_preparer(config: ServiceConfig) -> WorkspacePreparer | None:

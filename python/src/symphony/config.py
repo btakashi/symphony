@@ -54,10 +54,13 @@ class StrictConfigModel(BaseModel):
 class TrackerConfig(StrictConfigModel):
     kind: Literal[
         "beads",
+        "github",
         "memory",
     ]
     command: str = "bd"
     working_directory: Path | None = None
+    repository: str | None = None
+    in_progress_label: str = "symphony:in-progress"
     active_states: list[str] = Field(default_factory=list)
     terminal_states: list[str] = Field(default_factory=list)
 
@@ -67,6 +70,12 @@ class TrackerConfig(StrictConfigModel):
         if isinstance(value, str):
             return Path(value).expanduser()
         return value
+
+    @model_validator(mode="after")
+    def validate_tracker_fields(self) -> TrackerConfig:
+        if self.kind == "github" and not self.repository:
+            raise ValueError("tracker.repository is required when tracker.kind=github")
+        return self
 
 
 class PollingConfig(StrictConfigModel):

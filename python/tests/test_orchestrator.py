@@ -19,6 +19,9 @@ class MemoryTracker:
         self.issues = issues
         self.state_updates: list[tuple[str, str]] = []
 
+    async def check_supported_version(self) -> None:
+        return None
+
     async def fetch_candidate_issues(self) -> list[Issue]:
         return self.issues
 
