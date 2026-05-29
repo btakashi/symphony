@@ -122,7 +122,8 @@ tracker:
   closed_transition: Done
 ```
 
-Scoped Jira API tokens use Atlassian's gateway URL and do not require a username:
+Scoped Jira API tokens use Atlassian's gateway URL. User API tokens use the account email as
+`username`; service-account tokens can omit `username` to use Bearer auth:
 
 ```yaml
 tracker:
@@ -131,6 +132,7 @@ tracker:
   url: https://company.atlassian.net
   cloud_id: "$JIRA_CLOUD_ID"
   project: PROJ
+  username: "$JIRA_USERNAME"
   api_token: "$JIRA_API_TOKEN"
   in_progress_transition: In Progress
   closed_transition: Done
@@ -140,7 +142,8 @@ tracker:
 non-Done issues in the configured project with JQL, comments using Atlassian Document Format, and
 updates issue state by looking up the configured transition names. `auth_mode=basic` calls the
 configured site URL with HTTP Basic auth. `auth_mode=scoped` calls
-`https://api.atlassian.com/ex/jira/{cloud_id}` with Bearer auth.
+`https://api.atlassian.com/ex/jira/{cloud_id}` with Basic auth when `username` is configured, or
+Bearer auth when `username` is omitted.
 
 ## Smoke Tests
 

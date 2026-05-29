@@ -134,6 +134,32 @@ def test_load_config_accepts_scoped_jira_tracker() -> None:
     assert config.tracker.cloud_id == "cloud-123"
 
 
+def test_load_config_accepts_scoped_jira_tracker_with_username() -> None:
+    config = load_config(
+        {
+            "tracker": {
+                "kind": "jira",
+                "auth_mode": "scoped",
+                "url": "https://example.atlassian.net",
+                "cloud_id": "cloud-123",
+                "project": "SYMP",
+                "username": "$JIRA_USERNAME",
+                "api_token": "$JIRA_API_TOKEN",
+            },
+            "workspace": {"root": "/tmp/symphony-workspaces"},
+            "agent": {"provider": "claude", "mode": "headless"},
+            "claude": {"headless": {"executable": "claude"}},
+        },
+        environ={
+            "JIRA_USERNAME": "person@example.com",
+            "JIRA_API_TOKEN": "token",
+        },
+    )
+
+    assert config.tracker.auth_mode == "scoped"
+    assert config.tracker.username == "person@example.com"
+
+
 def test_load_config_requires_scoped_jira_cloud_id() -> None:
     raw_config = {
         "tracker": {
