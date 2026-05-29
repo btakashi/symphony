@@ -226,14 +226,13 @@ class JiraTracker:
     @property
     def _headers(self) -> dict[str, str]:
         assert self._config.api_token is not None
-        if self._config.auth_mode == "scoped":
+        if self._config.username:
+            authorization = _basic_authorization(self._config.username, self._config.api_token)
+        elif self._config.auth_mode == "scoped":
             authorization = f"Bearer {self._config.api_token}"
         else:
             assert self._config.username is not None
-            token = base64.b64encode(
-                f"{self._config.username}:{self._config.api_token}".encode()
-            ).decode()
-            authorization = f"Basic {token}"
+            authorization = _basic_authorization(self._config.username, self._config.api_token)
         return {
             "Accept": "application/json",
             "Authorization": authorization,
@@ -325,6 +324,11 @@ def _adf_doc(text: str) -> dict[str, object]:
             }
         ],
     }
+
+
+def _basic_authorization(username: str, api_token: str) -> str:
+    token = base64.b64encode(f"{username}:{api_token}".encode()).decode()
+    return f"Basic {token}"
 
 
 def _url(base_url: str, path: str, params: Mapping[str, str] | None = None) -> str:
