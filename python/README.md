@@ -83,3 +83,7 @@ worktrees so the dispatched agent retains local Beads access from inside the wor
 `symphony status` reads `log/status.json` when the daemon has written a current snapshot. If that
 file is missing, it falls back to `.symphony/runs/*.json` so recent run attempts remain inspectable
 after a process exit or restart.
+
+## PoC Status
+
+- 2026-05-28: The PoC can publish a completed Claude Code worktree as a draft PR.
