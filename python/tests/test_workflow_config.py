@@ -56,6 +56,37 @@ def test_load_config_validates_headless_config() -> None:
     assert config.environment.inherit is False
 
 
+def test_load_config_accepts_github_tracker_with_repository() -> None:
+    config = load_config(
+        {
+            "tracker": {
+                "kind": "github",
+                "command": "gh",
+                "repository": "owner/repo",
+            },
+            "workspace": {"root": "/tmp/symphony-workspaces"},
+            "agent": {"provider": "claude", "mode": "headless"},
+            "claude": {"headless": {"executable": "claude"}},
+        }
+    )
+
+    assert config.tracker.kind == "github"
+    assert config.tracker.repository == "owner/repo"
+    assert config.tracker.in_progress_label == "symphony:in-progress"
+
+
+def test_load_config_requires_github_repository() -> None:
+    raw_config = {
+        "tracker": {"kind": "github"},
+        "workspace": {"root": "/tmp/symphony-workspaces"},
+        "agent": {"provider": "claude", "mode": "headless"},
+        "claude": {"headless": {"executable": "claude"}},
+    }
+
+    with pytest.raises(ConfigError, match=r"tracker\.repository"):
+        load_config(raw_config)
+
+
 def test_load_config_requires_selected_mode_config() -> None:
     raw_config = {
         "tracker": {"kind": "beads"},

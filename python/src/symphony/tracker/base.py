@@ -10,6 +10,10 @@ from symphony.models import Issue
 class Tracker(Protocol):
     """Issue tracker operations used by the orchestrator."""
 
+    async def check_supported_version(self) -> None:
+        """Check whether the backing tracker client is available and supported."""
+        ...
+
     async def fetch_candidate_issues(self) -> list[Issue]:
         """Fetch issues eligible for dispatch."""
         ...
