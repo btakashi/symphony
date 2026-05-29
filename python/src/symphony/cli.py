@@ -46,6 +46,26 @@ def run_once(
         raise typer.Exit(code=1)
 
 
+@app.command("runs")
+def runs(
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Emit machine-readable JSON.")
+    ] = False,
+    limit: Annotated[int, typer.Option("--limit", help="Maximum runs to show.")] = 20,
+    ledger_dir: Annotated[
+        Path,
+        typer.Option("--ledger-dir", help="Directory containing run ledger JSON files."),
+    ] = RUN_LEDGER_DIR,
+) -> None:
+    """List recent run attempts with workspace paths."""
+
+    recent_runs = _recent_runs(RunLedger(ledger_dir).list(), limit=limit)
+    if json_output:
+        typer.echo(_json({"runs": recent_runs}))
+        return
+    typer.echo(_format_runs(recent_runs))
+
+
 @app.command("status")
 def status(
     json_output: Annotated[
@@ -90,6 +110,25 @@ def _json_default(value: object) -> object:
     if isinstance(value, StatusSnapshot | RunMetadata):
         return value.model_dump(mode="json")
     raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
+def _recent_runs(runs: list[RunMetadata], *, limit: int) -> list[RunMetadata]:
+    return sorted(runs, key=lambda run: run.updated_at, reverse=True)[:limit]
+
+
+def _format_runs(runs: list[RunMetadata]) -> str:
+    lines = [f"runs: {len(runs)}"]
+    for run in runs:
+        completed = run.completed_at.isoformat() if run.completed_at is not None else "-"
+        lines.append(
+            "  - "
+            f"{run.run_id} {run.issue_identifier} status={run.status} "
+            f"updated_at={run.updated_at.isoformat()} completed_at={completed}"
+        )
+        lines.append(f"    workspace={run.workspace_path}")
+        if run.error:
+            lines.append(f"    error={run.error}")
+    return "\n".join(lines)
 
 
 def _format_snapshot(snapshot: StatusSnapshot) -> str:
