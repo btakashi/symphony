@@ -72,12 +72,25 @@ class GitHubTracker:
         return [issue for issue in issues if in_progress not in issue.labels]
 
     async def check_supported_version(self) -> None:
-        result = await self._runner(
+        version_result = await self._runner(
             [self._config.command, "--version"], self._config.working_directory, None
         )
-        if result.returncode != 0:
+        if version_result.returncode != 0:
             message = (
-                result.stderr.strip() or result.stdout.strip() or "GitHub CLI version check failed"
+                version_result.stderr.strip()
+                or version_result.stdout.strip()
+                or "GitHub CLI version check failed"
+            )
+            raise GitHubTrackerError(message)
+
+        auth_result = await self._runner(
+            [self._config.command, "auth", "status"], self._config.working_directory, None
+        )
+        if auth_result.returncode != 0:
+            message = (
+                auth_result.stderr.strip()
+                or auth_result.stdout.strip()
+                or "GitHub CLI authentication check failed"
             )
             raise GitHubTrackerError(message)
 
