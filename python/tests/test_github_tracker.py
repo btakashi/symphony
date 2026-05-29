@@ -56,6 +56,35 @@ def json_result(payload: object) -> CommandResult:
 
 
 @pytest.mark.asyncio
+async def test_check_supported_version_requires_gh_auth(tmp_path: Path) -> None:
+    runner = FakeRunner(
+        [
+            CommandResult(returncode=0, stdout="gh version 2.0.0\n", stderr=""),
+            CommandResult(returncode=0, stdout="Logged in to github.com\n", stderr=""),
+        ]
+    )
+    tracker = GitHubTracker(tracker_config(tmp_path), command_runner=runner)
+
+    await tracker.check_supported_version()
+
+    assert runner.commands == [["gh", "--version"], ["gh", "auth", "status"]]
+
+
+@pytest.mark.asyncio
+async def test_check_supported_version_rejects_missing_auth(tmp_path: Path) -> None:
+    runner = FakeRunner(
+        [
+            CommandResult(returncode=0, stdout="gh version 2.0.0\n", stderr=""),
+            CommandResult(returncode=1, stdout="", stderr="not logged in"),
+        ]
+    )
+    tracker = GitHubTracker(tracker_config(tmp_path), command_runner=runner)
+
+    with pytest.raises(GitHubTrackerError, match="not logged in"):
+        await tracker.check_supported_version()
+
+
+@pytest.mark.asyncio
 async def test_fetch_candidate_issues_filters_in_progress_label(tmp_path: Path) -> None:
     runner = FakeRunner(
         [
