@@ -177,6 +177,92 @@ def test_run_show_json_reports_handoff(tmp_path: Path, monkeypatch: pytest.Monke
     assert payload["workspace_git_status"] == []
 
 
+def test_run_publish_commits_pushes_and_creates_draft_pr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ledger_dir = tmp_path / ".symphony" / "runs"
+    workspace = tmp_path / "workspaces" / "symphony-1"
+    workspace.mkdir(parents=True)
+    stdout_path = tmp_path / "stdout.log"
+    stdout_path.write_text(
+        'SYMPHONY_HANDOFF_START\n{"status":"succeeded","summary":"implemented"}\n'
+        "SYMPHONY_HANDOFF_END\n",
+        encoding="utf-8",
+    )
+    RunLedger(ledger_dir).write(
+        _metadata(tmp_path, "run-1").model_copy(
+            update={
+                "status": "succeeded",
+                "completed_at": _dt(12, 1),
+                "metadata": {"stdout_log_path": stdout_path.as_posix()},
+            }
+        )
+    )
+    commands: list[list[str]] = []
+
+    def fake_run_command(
+        command: list[str], *, cwd: Path, failure_message: str | None = None
+    ) -> object:
+        del failure_message
+        assert cwd == workspace
+        commands.append(command)
+        stdout = ""
+        if command == ["git", "status", "--porcelain"]:
+            stdout = " M README.md\n"
+        elif command == ["git", "branch", "--show-current"]:
+            stdout = "symphony-workspace-symphony-1\n"
+        elif command == ["git", "rev-parse", "--short", "HEAD"]:
+            stdout = "abc1234\n"
+        return _CommandResult(stdout=stdout)
+
+    monkeypatch.setattr("symphony.cli._run_command", fake_run_command)
+
+    def fake_ensure_draft_pr(_workspace: Path, _title: str, _body: str) -> str:
+        return "https://github.com/example/repo/pull/1"
+
+    monkeypatch.setattr("symphony.cli._ensure_draft_pr", fake_ensure_draft_pr)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "publish",
+            "run-1",
+            "--ledger-dir",
+            str(ledger_dir),
+            "--commit-message",
+            "Publish run",
+            "--title",
+            "Publish run PR",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "branch: symphony-workspace-symphony-1" in result.output
+    assert "commit: abc1234" in result.output
+    assert "pull_request: https://github.com/example/repo/pull/1" in result.output
+    assert commands == [
+        ["git", "status", "--porcelain"],
+        ["git", "branch", "--show-current"],
+        ["git", "add", "-A"],
+        ["git", "commit", "-m", "Publish run"],
+        ["git", "rev-parse", "--short", "HEAD"],
+        ["git", "push", "-u", "origin", "HEAD"],
+    ]
+
+
+def test_run_publish_rejects_non_succeeded_run(tmp_path: Path) -> None:
+    ledger_dir = tmp_path / ".symphony" / "runs"
+    RunLedger(ledger_dir).write(_metadata(tmp_path, "run-1"))
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["run", "publish", "run-1", "--ledger-dir", str(ledger_dir)])
+
+    assert result.exit_code == 1
+    assert "Run is not publishable because status is running" in result.output
+
+
 def test_status_reads_snapshot_before_ledger(tmp_path: Path) -> None:
     now = datetime(2026, 5, 19, 12, 0, tzinfo=UTC)
     status_path = tmp_path / "log" / "status.json"
@@ -297,3 +383,8 @@ def _metadata(tmp_path: Path, run_id: str) -> RunMetadata:
 
 def _dt(hour: int, minute: int) -> datetime:
     return datetime(2026, 5, 19, hour, minute, tzinfo=UTC)
+
+
+class _CommandResult:
+    def __init__(self, *, stdout: str) -> None:
+        self.stdout = stdout
