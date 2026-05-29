@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 from symphony.log_events import EventLogger, StatusSnapshotStore
 from symphony.models import (
@@ -124,13 +125,15 @@ class Orchestrator:
         events_seen = await self._append_new_events(run_ref, events_seen=events_seen)
         del events_seen
 
+        events = await self._runner.fetch_events(run_ref)
         now = self._clock()
         updated_metadata = metadata.model_copy(
             update={
                 "status": status,
                 "updated_at": now,
                 "completed_at": now if status in _TERMINAL_STATUSES else None,
-                "error": _latest_error(await self._runner.fetch_events(run_ref), status),
+                "error": _latest_error(events, status),
+                "metadata": _metadata_from_events(events),
             }
         )
         self._run_ledger.write(updated_metadata)
@@ -190,3 +193,10 @@ def _latest_error(events: list[RunEvent], status: RunStatus) -> str | None:
     if status != "failed":
         return None
     return events[-1].message if events else "Run failed"
+
+
+def _metadata_from_events(events: list[RunEvent]) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    for event in events:
+        metadata.update(event.metadata)
+    return metadata

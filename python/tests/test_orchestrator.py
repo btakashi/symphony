@@ -123,6 +123,7 @@ async def test_orchestrator_runs_ready_issue_through_fake_runner(tmp_path: Path)
     assert metadata.issue_identifier == "symphony-123"
     assert metadata.workspace_path == tmp_path / "workspaces" / "symphony-123"
     assert metadata.completed_at is not None
+    assert metadata.metadata == {"attempt": None, "outcome": "success", "polls": 1}
 
     events = EventLogger(tmp_path / "log" / "events.jsonl").read_all()
     assert [event.event_type for event in events] == ["run_started", "run_succeeded"]

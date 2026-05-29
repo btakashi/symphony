@@ -101,6 +101,82 @@ def test_runs_json_honors_limit(tmp_path: Path) -> None:
     assert [run["run_id"] for run in payload["runs"]] == ["run-new"]
 
 
+def test_run_show_reports_handoff_logs_and_workspace_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ledger_dir = tmp_path / ".symphony" / "runs"
+    stdout_path = tmp_path / "log" / "runs" / "run-1" / "stdout.log"
+    stderr_path = tmp_path / "log" / "runs" / "run-1" / "stderr.log"
+    stdout_path.parent.mkdir(parents=True)
+    stdout_path.write_text(
+        "\n".join(
+            [
+                "SYMPHONY_HANDOFF_START",
+                '{"status":"succeeded","summary":"implemented","artifacts":["README.md"],'
+                '"validation":["pytest"],"errors":[]}',
+                "SYMPHONY_HANDOFF_END",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    stderr_path.write_text("", encoding="utf-8")
+    RunLedger(ledger_dir).write(
+        _metadata(tmp_path, "run-1").model_copy(
+            update={
+                "status": "succeeded",
+                "completed_at": _dt(12, 1),
+                "metadata": {
+                    "stdout_log_path": stdout_path.as_posix(),
+                    "stderr_log_path": stderr_path.as_posix(),
+                },
+            }
+        )
+    )
+
+    def fake_workspace_git_status(_workspace: Path) -> list[str]:
+        return [" M README.md"]
+
+    monkeypatch.setattr("symphony.cli._workspace_git_status", fake_workspace_git_status)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["run", "show", "run-1", "--ledger-dir", str(ledger_dir)])
+
+    assert result.exit_code == 0
+    assert "run: run-1" in result.output
+    assert f"stdout: {stdout_path}" in result.output
+    assert "summary: implemented" in result.output
+    assert 'artifacts: ["README.md"]' in result.output
+    assert " M README.md" in result.output
+
+
+def test_run_show_json_reports_handoff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ledger_dir = tmp_path / ".symphony" / "runs"
+    stdout_path = tmp_path / "stdout.log"
+    stdout_path.write_text(
+        'SYMPHONY_HANDOFF_START\n{"status":"succeeded","summary":"done"}\nSYMPHONY_HANDOFF_END\n',
+        encoding="utf-8",
+    )
+    RunLedger(ledger_dir).write(
+        _metadata(tmp_path, "run-1").model_copy(
+            update={"metadata": {"stdout_log_path": stdout_path.as_posix()}}
+        )
+    )
+
+    def fake_workspace_git_status(_workspace: Path) -> list[str]:
+        return []
+
+    monkeypatch.setattr("symphony.cli._workspace_git_status", fake_workspace_git_status)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["run", "show", "run-1", "--json", "--ledger-dir", str(ledger_dir)])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["run"]["run_id"] == "run-1"
+    assert payload["handoff"]["summary"] == "done"
+    assert payload["workspace_git_status"] == []
+
+
 def test_status_reads_snapshot_before_ledger(tmp_path: Path) -> None:
     now = datetime(2026, 5, 19, 12, 0, tzinfo=UTC)
     status_path = tmp_path / "log" / "status.json"
