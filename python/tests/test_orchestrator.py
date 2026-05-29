@@ -18,6 +18,8 @@ class MemoryTracker:
     def __init__(self, issues: list[Issue]) -> None:
         self.issues = issues
         self.state_updates: list[tuple[str, str]] = []
+        self.comments: list[tuple[str, str]] = []
+        self.operations: list[tuple[str, str, str | None]] = []
 
     async def check_supported_version(self) -> None:
         return None
@@ -33,10 +35,12 @@ class MemoryTracker:
         return {issue_id: "open" for issue_id in issue_ids}
 
     async def create_comment(self, issue_id: str, body: str) -> None:
-        del issue_id, body
+        self.comments.append((issue_id, body))
+        self.operations.append(("comment", issue_id, body))
 
     async def update_issue_state(self, issue_id: str, state_name: str) -> None:
         self.state_updates.append((issue_id, state_name))
+        self.operations.append(("state", issue_id, state_name))
 
 
 class Clock:
@@ -119,6 +123,15 @@ async def test_orchestrator_runs_ready_issue_through_fake_runner(tmp_path: Path)
     assert result is not None
     assert result.status == "succeeded"
     assert tracker.state_updates == [("symphony-123", "in_progress"), ("symphony-123", "closed")]
+    assert len(tracker.comments) == 1
+    assert tracker.comments[0][0] == "symphony-123"
+    assert "completed with status `succeeded`" in tracker.comments[0][1]
+    assert "Fake runner succeeded symphony-123" in tracker.comments[0][1]
+    assert tracker.operations == [
+        ("state", "symphony-123", "in_progress"),
+        ("comment", "symphony-123", tracker.comments[0][1]),
+        ("state", "symphony-123", "closed"),
+    ]
 
     ledger = RunLedger(tmp_path / ".symphony" / "runs")
     metadata = ledger.read(result.run_id)
@@ -180,6 +193,7 @@ async def test_orchestrator_keeps_waiting_run_active_in_status_snapshot(tmp_path
     assert result is not None
     assert result.status == "waiting_for_permission"
     assert tracker.state_updates == [("symphony-123", "in_progress")]
+    assert tracker.comments == []
 
     metadata = RunLedger(tmp_path / ".symphony" / "runs").read(result.run_id)
     assert metadata.status == "waiting_for_permission"
@@ -202,3 +216,23 @@ async def test_orchestrator_waits_for_running_runner_when_requested(tmp_path: Pa
     assert result is not None
     assert result.status == "succeeded"
     assert tracker.state_updates == [("symphony-123", "in_progress"), ("symphony-123", "closed")]
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_comments_failed_run_without_closing_issue(tmp_path: Path) -> None:
+    tracker = MemoryTracker([issue()])
+    runner = FakeRunner(
+        scripts_by_identifier={
+            "symphony-123": [FakeRunScript(outcome="failure", message="validation failed")]
+        }
+    )
+    orch = orchestrator(tmp_path, tracker=tracker, runner=runner)
+
+    result = await orch.run_once()
+
+    assert result is not None
+    assert result.status == "failed"
+    assert tracker.state_updates == [("symphony-123", "in_progress")]
+    assert len(tracker.comments) == 1
+    assert "completed with status `failed`" in tracker.comments[0][1]
+    assert "validation failed" in tracker.comments[0][1]
