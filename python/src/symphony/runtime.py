@@ -15,6 +15,7 @@ from symphony.runner.claude_headless import ClaudeHeadlessRunner
 from symphony.tracker.base import Tracker
 from symphony.tracker.beads import BeadsTracker
 from symphony.tracker.github import GitHubTracker
+from symphony.tracker.jira import JiraTracker
 from symphony.workflow import load_workflow
 from symphony.workspace import WorkspaceManager
 
@@ -82,6 +83,8 @@ def _build_tracker(config: ServiceConfig) -> Tracker:
         return BeadsTracker(config.tracker)
     if config.tracker.kind == "github":
         return GitHubTracker(config.tracker)
+    if config.tracker.kind == "jira":
+        return JiraTracker(config.tracker)
     raise SymphonyRuntimeError(f"Unsupported tracker.kind for run-once: {config.tracker.kind}")
 
 

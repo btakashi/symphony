@@ -108,6 +108,23 @@ tracker:
 adding `in_progress_label`, filters that label out of future candidates, comments when requested,
 and closes issues after succeeded runs.
 
+Jira Cloud can be selected with REST API credentials:
+
+```yaml
+tracker:
+  kind: jira
+  url: https://company.atlassian.net
+  project: PROJ
+  username: "$JIRA_USERNAME"
+  api_token: "$JIRA_API_TOKEN"
+  in_progress_transition: In Progress
+  closed_transition: Done
+```
+
+`tracker.kind=jira` checks `/rest/api/3/myself` before dispatch. By default it searches
+non-Done issues in the configured project with JQL, comments using Atlassian Document Format, and
+updates issue state by looking up the configured transition names.
+
 ## Smoke Tests
 
 - 2026-05-28: Confirmed the Python Symphony PoC can dispatch Claude Code through Beads worktrees

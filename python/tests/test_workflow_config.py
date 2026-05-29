@@ -87,6 +87,43 @@ def test_load_config_requires_github_repository() -> None:
         load_config(raw_config)
 
 
+def test_load_config_accepts_jira_tracker() -> None:
+    config = load_config(
+        {
+            "tracker": {
+                "kind": "jira",
+                "url": "https://example.atlassian.net",
+                "project": "SYMP",
+                "username": "person@example.com",
+                "api_token": "$JIRA_API_TOKEN",
+                "jql": 'project = "SYMP" AND statusCategory != Done',
+            },
+            "workspace": {"root": "/tmp/symphony-workspaces"},
+            "agent": {"provider": "claude", "mode": "headless"},
+            "claude": {"headless": {"executable": "claude"}},
+        },
+        environ={"JIRA_API_TOKEN": "token"},
+    )
+
+    assert config.tracker.kind == "jira"
+    assert config.tracker.url == "https://example.atlassian.net"
+    assert config.tracker.project == "SYMP"
+    assert config.tracker.username == "person@example.com"
+    assert config.tracker.api_token == "token"
+
+
+def test_load_config_requires_jira_auth_fields() -> None:
+    raw_config = {
+        "tracker": {"kind": "jira", "url": "https://example.atlassian.net"},
+        "workspace": {"root": "/tmp/symphony-workspaces"},
+        "agent": {"provider": "claude", "mode": "headless"},
+        "claude": {"headless": {"executable": "claude"}},
+    }
+
+    with pytest.raises(ConfigError, match=r"tracker\.project"):
+        load_config(raw_config)
+
+
 def test_load_config_requires_selected_mode_config() -> None:
     raw_config = {
         "tracker": {"kind": "beads"},
