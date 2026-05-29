@@ -113,3 +113,5 @@ and closes issues after succeeded runs.
 - 2026-05-28: Confirmed the Python Symphony PoC can dispatch Claude Code through Beads worktrees
   and inspect completed runs.
 - 2026-05-28: Confirmed the PoC can publish a completed Claude Code worktree as a draft PR.
+- 2026-05-29: Confirmed the GitHub Issues tracker (`tracker.kind=github`) live smoke ran through
+  Claude Code.
