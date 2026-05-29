@@ -84,6 +84,8 @@ worktrees so the dispatched agent retains local Beads access from inside the wor
 file is missing, it falls back to `.symphony/runs/*.json` so recent run attempts remain inspectable
 after a process exit or restart.
 
-## PoC Status
+## Smoke Tests
 
-- 2026-05-28: The PoC can publish a completed Claude Code worktree as a draft PR.
+- 2026-05-28: Confirmed the Python Symphony PoC can dispatch Claude Code through Beads worktrees
+  and inspect completed runs.
+- 2026-05-28: Confirmed the PoC can publish a completed Claude Code worktree as a draft PR.
