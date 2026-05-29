@@ -1,4 +1,5 @@
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -57,6 +58,39 @@ def test_run_once_reports_dispatched_issue(tmp_path: Path, monkeypatch: pytest.M
 
     assert result.exit_code == 0
     assert "SYMP-1: succeeded (run-1)" in result.output
+
+
+def test_daemon_reports_bounded_cycles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    workflow = tmp_path / "WORKFLOW.md"
+    workflow.write_text("---\n---\n\nDo work.\n", encoding="utf-8")
+
+    async def fake_daemon(
+        workflow_path: Path,
+        *,
+        cycles: int | None,
+        on_cycle: Callable[[int, OrchestratorCycleResult | None], None],
+    ) -> object:
+        assert workflow_path == workflow
+        assert cycles == 2
+        on_cycle(
+            1,
+            OrchestratorCycleResult(
+                issue=Issue(id="issue-1", identifier="SYMP-1", title="Do work", state="open"),
+                run_id="run-1",
+                status="succeeded",
+            ),
+        )
+        on_cycle(2, None)
+        return object()
+
+    monkeypatch.setattr("symphony.cli.run_daemon_from_workflow", fake_daemon)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["daemon", "--workflow", str(workflow), "--cycles", "2"])
+
+    assert result.exit_code == 0
+    assert "cycle 1: SYMP-1: succeeded (run-1)" in result.output
+    assert "cycle 2: no ready issues" in result.output
 
 
 def test_runs_lists_recent_runs_newest_first(tmp_path: Path) -> None:

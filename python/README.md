@@ -71,6 +71,8 @@ uv run pytest -m spike
 ```bash
 uv run symphony --help
 uv run symphony run-once --workflow ../WORKFLOW.md
+uv run symphony daemon --workflow ../WORKFLOW.md
+uv run symphony daemon --workflow ../WORKFLOW.md --cycles 3
 uv run symphony status
 uv run symphony status --json
 ```
@@ -83,6 +85,10 @@ worktrees so the dispatched agent retains local Beads access from inside the wor
 `symphony status` reads `log/status.json` when the daemon has written a current snapshot. If that
 file is missing, it falls back to `.symphony/runs/*.json` so recent run attempts remain inspectable
 after a process exit or restart.
+
+`symphony daemon` reuses the same workflow runtime in a polling loop. It processes at most one
+eligible issue per cycle, sleeps for `polling.interval_ms` between cycles, and accepts `--cycles`
+for bounded smoke runs.
 
 ## Trackers
 

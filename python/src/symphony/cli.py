@@ -14,9 +14,10 @@ import typer
 
 from symphony.log_events import StatusSnapshotStore
 from symphony.models import RunMetadata, StatusSnapshot
+from symphony.orchestrator import OrchestratorCycleResult
 from symphony.run_ledger import RunLedger, RunLedgerError
 from symphony.runner.claude_headless import ClaudeHeadlessRunnerError, parse_structured_handoff
-from symphony.runtime import find_workflow_path, run_once_from_workflow
+from symphony.runtime import find_workflow_path, run_daemon_from_workflow, run_once_from_workflow
 from symphony.runtime_paths import RUN_LEDGER_DIR, STATUS_SNAPSHOT_PATH
 
 app = typer.Typer(help="Python implementation of Symphony.")
@@ -50,6 +51,34 @@ def run_once(
     typer.echo(f"{result.issue.identifier}: {result.status} ({result.run_id})")
     if result.status == "failed":
         raise typer.Exit(code=1)
+
+
+@app.command("daemon")
+def daemon(
+    workflow_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--workflow",
+            help="Path to WORKFLOW.md. Defaults to searching from the current directory.",
+        ),
+    ] = None,
+    cycles: Annotated[
+        int | None,
+        typer.Option("--cycles", help="Stop after this many poll cycles."),
+    ] = None,
+) -> None:
+    """Poll the configured tracker and run eligible issues until stopped."""
+
+    workflow = workflow_path or find_workflow_path(Path.cwd())
+
+    def report(cycle: int, result: OrchestratorCycleResult | None) -> None:
+        prefix = f"cycle {cycle}:"
+        if result is None:
+            typer.echo(f"{prefix} no ready issues")
+            return
+        typer.echo(f"{prefix} {result.issue.identifier}: {result.status} ({result.run_id})")
+
+    asyncio.run(run_daemon_from_workflow(workflow, cycles=cycles, on_cycle=report))
 
 
 @app.command("runs")
