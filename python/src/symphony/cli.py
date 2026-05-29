@@ -6,6 +6,7 @@ import asyncio
 import json
 import subprocess
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, cast
 
@@ -131,6 +132,34 @@ def run_publish(
     typer.echo(f"pull_request: {result.pr_url}")
 
 
+@run_app.command("fail")
+def run_fail(
+    run_id: Annotated[str, typer.Argument(help="Run ID to mark failed.")],
+    reason: Annotated[
+        str,
+        typer.Option("--reason", help="Reason to record on the failed run."),
+    ] = "Marked failed manually",
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Allow updating a terminal run."),
+    ] = False,
+    ledger_dir: Annotated[
+        Path,
+        typer.Option("--ledger-dir", help="Directory containing run ledger JSON files."),
+    ] = RUN_LEDGER_DIR,
+) -> None:
+    """Mark a stale or abandoned run ledger entry as failed."""
+
+    try:
+        updated = _fail_run(RunLedger(ledger_dir), run_id, reason=reason, force=force)
+    except (RunLedgerError, RunStateError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(f"{updated.run_id}: failed")
+    typer.echo(f"error: {updated.error}")
+
+
 @app.command("status")
 def status(
     json_output: Annotated[
@@ -181,6 +210,10 @@ class PublishError(RuntimeError):
     """Raised when a run workspace cannot be published."""
 
 
+class RunStateError(RuntimeError):
+    """Raised when a run ledger state transition is invalid."""
+
+
 @dataclass(frozen=True)
 class PublishResult:
     branch: str
@@ -190,6 +223,31 @@ class PublishResult:
 
 def _recent_runs(runs: list[RunMetadata], *, limit: int) -> list[RunMetadata]:
     return sorted(runs, key=lambda run: run.updated_at, reverse=True)[:limit]
+
+
+def _fail_run(
+    ledger: RunLedger,
+    run_id: str,
+    *,
+    reason: str,
+    force: bool = False,
+    now: datetime | None = None,
+) -> RunMetadata:
+    run = ledger.read(run_id)
+    if run.status in {"succeeded", "failed", "cancelled"} and not force:
+        raise RunStateError(f"Run is already terminal with status {run.status}")
+
+    timestamp = now or _utc_now()
+    updated = run.model_copy(
+        update={
+            "status": "failed",
+            "updated_at": timestamp,
+            "completed_at": timestamp,
+            "error": reason,
+        }
+    )
+    ledger.write(updated)
+    return updated
 
 
 def _run_details(run: RunMetadata) -> dict[str, object]:
@@ -432,6 +490,10 @@ def _run_command(
         detail = (result.stderr or result.stdout).strip()
         raise PublishError(f"{message}: {detail}")
     return result
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 def _format_snapshot(snapshot: StatusSnapshot) -> str:
