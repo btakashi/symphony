@@ -138,6 +138,16 @@ class Orchestrator:
         )
         self._run_ledger.write(updated_metadata)
 
+        if status in _TERMINAL_STATUSES:
+            await self._tracker.create_comment(
+                issue.id,
+                _completion_comment(
+                    issue=issue,
+                    run_id=run_ref.run_id,
+                    status=status,
+                    message=_completion_message(events, updated_metadata.error),
+                ),
+            )
         if status == "succeeded":
             await self._tracker.update_issue_state(issue.id, "closed")
 
@@ -193,6 +203,25 @@ def _latest_error(events: list[RunEvent], status: RunStatus) -> str | None:
     if status != "failed":
         return None
     return events[-1].message if events else "Run failed"
+
+
+def _completion_message(events: list[RunEvent], error: str | None) -> str:
+    if events:
+        return events[-1].message
+    return error or "Run completed"
+
+
+def _completion_comment(
+    *,
+    issue: Issue,
+    run_id: str,
+    status: RunStatus,
+    message: str,
+) -> str:
+    return (
+        f"Symphony run `{run_id}` for `{issue.identifier}` completed with status `{status}`.\n\n"
+        f"{message}"
+    )
 
 
 def _metadata_from_events(events: list[RunEvent]) -> dict[str, Any]:
