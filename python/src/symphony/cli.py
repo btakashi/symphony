@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, cast
 
@@ -96,6 +97,40 @@ def run_show(
     typer.echo(_format_run_details(details))
 
 
+@run_app.command("publish")
+def run_publish(
+    run_id: Annotated[str, typer.Argument(help="Succeeded run ID to publish.")],
+    commit_message: Annotated[
+        str | None,
+        typer.Option("--commit-message", help="Commit message for workspace changes."),
+    ] = None,
+    title: Annotated[
+        str | None,
+        typer.Option("--title", help="Draft pull request title."),
+    ] = None,
+    ledger_dir: Annotated[
+        Path,
+        typer.Option("--ledger-dir", help="Directory containing run ledger JSON files."),
+    ] = RUN_LEDGER_DIR,
+) -> None:
+    """Commit a succeeded run's workspace changes and open a draft PR."""
+
+    try:
+        run = RunLedger(ledger_dir).read(run_id)
+        result = _publish_run(
+            run,
+            commit_message=commit_message,
+            title=title,
+        )
+    except (RunLedgerError, PublishError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(f"branch: {result.branch}")
+    typer.echo(f"commit: {result.commit_sha}")
+    typer.echo(f"pull_request: {result.pr_url}")
+
+
 @app.command("status")
 def status(
     json_output: Annotated[
@@ -140,6 +175,17 @@ def _json_default(value: object) -> object:
     if isinstance(value, StatusSnapshot | RunMetadata):
         return value.model_dump(mode="json")
     raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
+class PublishError(RuntimeError):
+    """Raised when a run workspace cannot be published."""
+
+
+@dataclass(frozen=True)
+class PublishResult:
+    branch: str
+    commit_sha: str
+    pr_url: str
 
 
 def _recent_runs(runs: list[RunMetadata], *, limit: int) -> list[RunMetadata]:
@@ -264,6 +310,128 @@ def _workspace_git_status(workspace_path: Path) -> list[str] | str:
     if result.returncode != 0:
         return (result.stderr or result.stdout or "git status failed").strip()
     return [line for line in result.stdout.splitlines() if line]
+
+
+def _publish_run(
+    run: RunMetadata,
+    *,
+    commit_message: str | None = None,
+    title: str | None = None,
+) -> PublishResult:
+    if run.status != "succeeded":
+        raise PublishError(f"Run is not publishable because status is {run.status}")
+    if not run.workspace_path.exists():
+        raise PublishError(f"Workspace unavailable: {run.workspace_path}")
+
+    status = _git_status_porcelain(run.workspace_path)
+    if not status:
+        raise PublishError(f"Workspace has no changes to publish: {run.workspace_path}")
+
+    branch = _command_stdout(
+        ["git", "branch", "--show-current"],
+        cwd=run.workspace_path,
+        failure_message="Unable to determine workspace branch",
+    )
+    if not branch:
+        raise PublishError("Workspace is not on a named branch")
+
+    message = commit_message or f"{run.issue_identifier}: publish completed run"
+    pr_title = title or f"{run.issue_identifier}: publish completed run"
+    body = _publish_pr_body(run, status)
+
+    _run_command(["git", "add", "-A"], cwd=run.workspace_path)
+    _run_command(["git", "commit", "-m", message], cwd=run.workspace_path)
+    commit_sha = _command_stdout(
+        ["git", "rev-parse", "--short", "HEAD"],
+        cwd=run.workspace_path,
+        failure_message="Unable to read published commit",
+    )
+    _run_command(["git", "push", "-u", "origin", "HEAD"], cwd=run.workspace_path)
+    pr_url = _ensure_draft_pr(run.workspace_path, pr_title, body)
+    return PublishResult(branch=branch, commit_sha=commit_sha, pr_url=pr_url)
+
+
+def _git_status_porcelain(workspace_path: Path) -> list[str]:
+    result = _run_command(["git", "status", "--porcelain"], cwd=workspace_path)
+    return [line for line in result.stdout.splitlines() if line]
+
+
+def _ensure_draft_pr(workspace_path: Path, title: str, body: str) -> str:
+    existing = subprocess.run(
+        ["gh", "pr", "view", "--json", "url", "-q", ".url"],
+        cwd=workspace_path,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if existing.returncode == 0 and existing.stdout.strip():
+        return existing.stdout.strip()
+
+    return _command_stdout(
+        ["gh", "pr", "create", "--draft", "--title", title, "--body", body],
+        cwd=workspace_path,
+        failure_message="Unable to create draft pull request",
+    )
+
+
+def _publish_pr_body(run: RunMetadata, status: list[str]) -> str:
+    handoff = _read_handoff(_metadata_path(run, "stdout_log_path"))
+    summary = handoff.get("summary") if isinstance(handoff, dict) else None
+    summary_text = summary if isinstance(summary, str) and summary else "Completed Symphony run."
+    status_text = "\n".join(f"- `{line}`" for line in status)
+    return f"""#### Context
+
+Published from Symphony run `{run.run_id}` for Beads issue `{run.issue_identifier}`.
+
+#### TL;DR
+
+*{summary_text[:120]}*
+
+#### Summary
+
+- Commit workspace changes produced by the completed run
+- Preserve the run handoff and workspace branch for review
+- Publish as a draft PR for human inspection
+
+#### Workspace Changes
+
+{status_text}
+
+#### Test Plan
+
+- [ ] `make -C elixir all`
+- [ ] Review the run handoff and workspace diff
+"""
+
+
+def _command_stdout(command: list[str], *, cwd: Path, failure_message: str) -> str:
+    return _run_command(command, cwd=cwd, failure_message=failure_message).stdout.strip()
+
+
+def _run_command(
+    command: list[str],
+    *,
+    cwd: Path,
+    failure_message: str | None = None,
+) -> subprocess.CompletedProcess[str]:
+    try:
+        result = subprocess.run(
+            command,
+            cwd=cwd,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        message = failure_message or f"Command failed: {' '.join(command)}"
+        raise PublishError(f"{message}: {exc}") from exc
+    if result.returncode != 0:
+        message = failure_message or f"Command failed: {' '.join(command)}"
+        detail = (result.stderr or result.stdout).strip()
+        raise PublishError(f"{message}: {detail}")
+    return result
 
 
 def _format_snapshot(snapshot: StatusSnapshot) -> str:
