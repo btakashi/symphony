@@ -263,6 +263,47 @@ def test_run_publish_rejects_non_succeeded_run(tmp_path: Path) -> None:
     assert "Run is not publishable because status is running" in result.output
 
 
+def test_run_fail_marks_active_run_failed(tmp_path: Path) -> None:
+    ledger_dir = tmp_path / ".symphony" / "runs"
+    RunLedger(ledger_dir).write(_metadata(tmp_path, "run-1"))
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "fail",
+            "run-1",
+            "--reason",
+            "stale process",
+            "--ledger-dir",
+            str(ledger_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "run-1: failed" in result.output
+    updated = RunLedger(ledger_dir).read("run-1")
+    assert updated.status == "failed"
+    assert updated.error == "stale process"
+    assert updated.completed_at is not None
+
+
+def test_run_fail_rejects_terminal_run_without_force(tmp_path: Path) -> None:
+    ledger_dir = tmp_path / ".symphony" / "runs"
+    RunLedger(ledger_dir).write(
+        _metadata(tmp_path, "run-1").model_copy(
+            update={"status": "succeeded", "completed_at": _dt(12, 1)}
+        )
+    )
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["run", "fail", "run-1", "--ledger-dir", str(ledger_dir)])
+
+    assert result.exit_code == 1
+    assert "Run is already terminal with status succeeded" in result.output
+
+
 def test_status_reads_snapshot_before_ledger(tmp_path: Path) -> None:
     now = datetime(2026, 5, 19, 12, 0, tzinfo=UTC)
     status_path = tmp_path / "log" / "status.json"
