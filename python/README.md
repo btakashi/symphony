@@ -156,3 +156,6 @@ Bearer auth when `username` is omitted.
   smoke ran through Claude Code against `MD-5102`, using scoped user-token Basic auth via the
   Atlassian gateway. Symphony claimed the issue with `In Progress`, completed run
   `claude-6b46af2e2cc44e04a2f0ccbb071c1bc9`, and transitioned the issue to `Done`.
+- 2026-05-29: Confirmed Jira tracker completion comment writeback against `MD-5103`. Run
+  `claude-012ebbaa69b34c74a752e64f5a446299` wrote a Symphony completion comment, then
+  transitioned the issue to `Done`.
