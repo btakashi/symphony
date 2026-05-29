@@ -49,6 +49,7 @@ async def test_fetch_candidate_issues_normalizes_ready_output(tmp_path: Path) ->
                         "title": "Do work",
                         "description": "Details",
                         "status": "open",
+                        "issue_type": "task",
                         "priority": "P2",
                         "labels": ["Backend", "Python"],
                         "external_ref": "https://example.test/issue",
@@ -68,11 +69,41 @@ async def test_fetch_candidate_issues_normalizes_ready_output(tmp_path: Path) ->
     assert issues[0].id == "symphony-123"
     assert issues[0].identifier == "symphony-123"
     assert issues[0].title == "Do work"
+    assert issues[0].issue_type == "task"
     assert issues[0].description == "Details"
     assert issues[0].state == "open"
     assert issues[0].priority == 2
     assert issues[0].labels == ("backend", "python")
     assert issues[0].url == "https://example.test/issue"
+
+
+@pytest.mark.asyncio
+async def test_fetch_candidate_issues_skips_epics(tmp_path: Path) -> None:
+    runner = FakeRunner(
+        [
+            command_ok(
+                [
+                    {
+                        "id": "symphony-epic",
+                        "title": "Umbrella",
+                        "status": "open",
+                        "issue_type": "epic",
+                    },
+                    {
+                        "id": "symphony-task",
+                        "title": "Concrete work",
+                        "status": "open",
+                        "issue_type": "task",
+                    },
+                ]
+            )
+        ]
+    )
+    tracker = BeadsTracker(tracker_config(tmp_path), command_runner=runner)
+
+    issues = await tracker.fetch_candidate_issues()
+
+    assert [issue.id for issue in issues] == ["symphony-task"]
 
 
 @pytest.mark.asyncio

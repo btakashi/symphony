@@ -26,6 +26,7 @@ class Issue(SymphonyModel):
     identifier: str
     title: str
     description: str | None = None
+    issue_type: str = "task"
     priority: int | None = None
     state: str
     branch_name: str | None = None

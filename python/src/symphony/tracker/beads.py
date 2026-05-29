@@ -41,6 +41,7 @@ class BeadsIssuePayload(BaseModel):
     id: str
     title: str
     status: str
+    issue_type: str = "task"
     description: str | None = None
     priority: int | str | None = None
     labels: list[str] = Field(default_factory=list)
@@ -65,7 +66,7 @@ class BeadsTracker:
 
     async def fetch_candidate_issues(self) -> list[Issue]:
         payload = await self._json(["ready", "--json"])
-        return _normalize_issue_list(payload)
+        return [issue for issue in _normalize_issue_list(payload) if issue.issue_type != "epic"]
 
     async def check_supported_version(self) -> None:
         result = await self._runner(
@@ -178,6 +179,7 @@ def _normalize_issue_list(payload: Any) -> list[Issue]:
                 id=issue.id,
                 identifier=issue.id,
                 title=issue.title,
+                issue_type=issue.issue_type,
                 description=issue.description,
                 priority=_normalize_priority(issue.priority),
                 state=issue.status,
