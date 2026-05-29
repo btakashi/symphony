@@ -152,3 +152,7 @@ Bearer auth when `username` is omitted.
 - 2026-05-28: Confirmed the PoC can publish a completed Claude Code worktree as a draft PR.
 - 2026-05-29: Confirmed the GitHub Issues tracker (`tracker.kind=github`) live smoke ran through
   Claude Code.
+- 2026-05-29: Confirmed the Jira Cloud tracker (`tracker.kind=jira`, `auth_mode=scoped`) live
+  smoke ran through Claude Code against `MD-5102`, using scoped user-token Basic auth via the
+  Atlassian gateway. Symphony claimed the issue with `In Progress`, completed run
+  `claude-6b46af2e2cc44e04a2f0ccbb071c1bc9`, and transitioned the issue to `Done`.
