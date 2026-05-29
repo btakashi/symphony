@@ -112,6 +112,46 @@ def test_load_config_accepts_jira_tracker() -> None:
     assert config.tracker.api_token == "token"
 
 
+def test_load_config_accepts_scoped_jira_tracker() -> None:
+    config = load_config(
+        {
+            "tracker": {
+                "kind": "jira",
+                "auth_mode": "scoped",
+                "url": "https://example.atlassian.net",
+                "cloud_id": "cloud-123",
+                "project": "SYMP",
+                "api_token": "$JIRA_API_TOKEN",
+            },
+            "workspace": {"root": "/tmp/symphony-workspaces"},
+            "agent": {"provider": "claude", "mode": "headless"},
+            "claude": {"headless": {"executable": "claude"}},
+        },
+        environ={"JIRA_API_TOKEN": "token"},
+    )
+
+    assert config.tracker.auth_mode == "scoped"
+    assert config.tracker.cloud_id == "cloud-123"
+
+
+def test_load_config_requires_scoped_jira_cloud_id() -> None:
+    raw_config = {
+        "tracker": {
+            "kind": "jira",
+            "auth_mode": "scoped",
+            "url": "https://example.atlassian.net",
+            "project": "SYMP",
+            "api_token": "token",
+        },
+        "workspace": {"root": "/tmp/symphony-workspaces"},
+        "agent": {"provider": "claude", "mode": "headless"},
+        "claude": {"headless": {"executable": "claude"}},
+    }
+
+    with pytest.raises(ConfigError, match=r"tracker\.cloud_id"):
+        load_config(raw_config)
+
+
 def test_load_config_requires_jira_auth_fields() -> None:
     raw_config = {
         "tracker": {"kind": "jira", "url": "https://example.atlassian.net"},

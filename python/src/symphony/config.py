@@ -62,6 +62,8 @@ class TrackerConfig(StrictConfigModel):
     working_directory: Path | None = None
     repository: str | None = None
     url: str | None = None
+    auth_mode: Literal["basic", "scoped"] = "basic"
+    cloud_id: str | None = None
     project: str | None = None
     username: str | None = None
     api_token: str | None = None
@@ -84,11 +86,12 @@ class TrackerConfig(StrictConfigModel):
         if self.kind == "github" and not self.repository:
             raise ValueError("tracker.repository is required when tracker.kind=github")
         if self.kind == "jira":
-            missing = [
-                field
-                for field in ("url", "project", "username", "api_token")
-                if not getattr(self, field)
-            ]
+            required_fields = ["url", "project", "api_token"]
+            if self.auth_mode == "basic":
+                required_fields.append("username")
+            if self.auth_mode == "scoped":
+                required_fields.append("cloud_id")
+            missing = [field for field in required_fields if not getattr(self, field)]
             if missing:
                 names = ", ".join(f"tracker.{field}" for field in missing)
                 raise ValueError(f"{names} required when tracker.kind=jira")
