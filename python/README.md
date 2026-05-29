@@ -84,6 +84,30 @@ worktrees so the dispatched agent retains local Beads access from inside the wor
 file is missing, it falls back to `.symphony/runs/*.json` so recent run attempts remain inspectable
 after a process exit or restart.
 
+## Trackers
+
+The default local workflow uses Beads:
+
+```yaml
+tracker:
+  kind: beads
+  command: bd
+```
+
+GitHub Issues can be selected with the local `gh` CLI:
+
+```yaml
+tracker:
+  kind: github
+  command: gh
+  repository: owner/repo
+  in_progress_label: symphony:in-progress
+```
+
+`tracker.kind=github` requires `gh auth status` to pass before dispatch. Symphony claims issues by
+adding `in_progress_label`, filters that label out of future candidates, comments when requested,
+and closes issues after succeeded runs.
+
 ## Smoke Tests
 
 - 2026-05-28: Confirmed the Python Symphony PoC can dispatch Claude Code through Beads worktrees
