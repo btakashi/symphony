@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import asyncio
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 from symphony.config import ServiceConfig, load_config
@@ -24,6 +26,17 @@ class SymphonyRuntimeError(RuntimeError):
     """Raised when a runtime command cannot be assembled."""
 
 
+DaemonCycleCallback = Callable[[int, OrchestratorCycleResult | None], None]
+SleepFn = Callable[[float], Awaitable[None]]
+
+
+@dataclass(frozen=True)
+class DaemonResult:
+    """Summary returned when a bounded daemon run exits."""
+
+    cycles: int
+
+
 async def run_once_from_workflow(
     workflow_path: Path,
     *,
@@ -37,6 +50,42 @@ async def run_once_from_workflow(
     await tracker.check_supported_version()
     orchestrator = _build_orchestrator(workflow, config, tracker)
     return await orchestrator.run_once(wait_for_completion=True)
+
+
+async def run_daemon_from_workflow(
+    workflow_path: Path,
+    *,
+    cycles: int | None = None,
+    environ: Mapping[str, str] | None = None,
+    on_cycle: DaemonCycleCallback | None = None,
+    sleep: SleepFn = asyncio.sleep,
+) -> DaemonResult:
+    """Run the configured workflow repeatedly until stopped or the cycle limit is reached."""
+
+    if cycles is not None and cycles < 1:
+        raise SymphonyRuntimeError("cycles must be at least 1")
+
+    workflow = load_workflow(workflow_path)
+    config = load_config(workflow.config, environ)
+    tracker = _build_tracker(config)
+    await tracker.check_supported_version()
+    orchestrator = _build_orchestrator(workflow, config, tracker)
+    poll_interval_seconds = config.polling.interval_ms / 1000
+
+    completed_cycles = 0
+    while cycles is None or completed_cycles < cycles:
+        result = await orchestrator.run_once(
+            wait_for_completion=True,
+            poll_interval_seconds=poll_interval_seconds,
+        )
+        completed_cycles += 1
+        if on_cycle is not None:
+            on_cycle(completed_cycles, result)
+        if cycles is not None and completed_cycles >= cycles:
+            break
+        await sleep(poll_interval_seconds)
+
+    return DaemonResult(cycles=completed_cycles)
 
 
 def find_workflow_path(start: Path) -> Path:
