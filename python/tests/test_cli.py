@@ -540,6 +540,97 @@ def test_run_fail_rejects_terminal_run_without_force(tmp_path: Path) -> None:
     assert "Run is already terminal with status succeeded" in result.output
 
 
+def test_run_recover_reports_stale_active_runs_without_applying(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ledger_dir = tmp_path / ".symphony" / "runs"
+    stale = _metadata(tmp_path, "run-stale").model_copy(update={"updated_at": _dt(10, 0)})
+    fresh = _metadata(tmp_path, "run-fresh").model_copy(update={"updated_at": _dt(11, 45)})
+    terminal = _metadata(tmp_path, "run-done").model_copy(
+        update={"status": "succeeded", "updated_at": _dt(9, 0), "completed_at": _dt(9, 0)}
+    )
+    ledger = RunLedger(ledger_dir)
+    ledger.write(stale)
+    ledger.write(fresh)
+    ledger.write(terminal)
+    monkeypatch.setattr("symphony.cli._utc_now", lambda: _dt(12, 0))
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "recover",
+            "--older-than-minutes",
+            "60",
+            "--ledger-dir",
+            str(ledger_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "run-stale symphony-1: would mark failed" in result.output
+    assert "run-fresh" not in result.output
+    assert "run-done" not in result.output
+    assert ledger.read("run-stale").status == "running"
+
+
+def test_run_recover_marks_stale_active_runs_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ledger_dir = tmp_path / ".symphony" / "runs"
+    RunLedger(ledger_dir).write(
+        _metadata(tmp_path, "run-stale").model_copy(update={"updated_at": _dt(10, 0)})
+    )
+    monkeypatch.setattr("symphony.cli._utc_now", lambda: _dt(12, 0))
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "recover",
+            "--older-than-minutes",
+            "60",
+            "--apply",
+            "--ledger-dir",
+            str(ledger_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "run-stale symphony-1: marked failed" in result.output
+    updated = RunLedger(ledger_dir).read("run-stale")
+    assert updated.status == "failed"
+    assert updated.completed_at is not None
+    assert updated.error is not None
+    assert "Recovered stale active run" in updated.error
+
+
+def test_run_recover_reports_no_stale_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ledger_dir = tmp_path / ".symphony" / "runs"
+    RunLedger(ledger_dir).write(
+        _metadata(tmp_path, "run-fresh").model_copy(update={"updated_at": _dt(11, 45)})
+    )
+    monkeypatch.setattr("symphony.cli._utc_now", lambda: _dt(12, 0))
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "recover",
+            "--older-than-minutes",
+            "60",
+            "--ledger-dir",
+            str(ledger_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "No stale active runs." in result.output
+
+
 def test_status_reads_snapshot_before_ledger(tmp_path: Path) -> None:
     now = datetime(2026, 5, 19, 12, 0, tzinfo=UTC)
     status_path = tmp_path / "log" / "status.json"

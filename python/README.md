@@ -80,6 +80,8 @@ uv run symphony runs
 uv run symphony run show <run-id>
 uv run symphony run publish <run-id>
 uv run symphony run cleanup <run-id>
+uv run symphony run recover --older-than-minutes 60
+uv run symphony run recover --older-than-minutes 60 --apply
 ```
 
 `symphony run-once` loads `WORKFLOW.md`, checks the local Beads CLI, claims the first ready issue,
@@ -91,6 +93,10 @@ worktrees so the dispatched agent retains local Beads access from inside the wor
 It uses `git worktree remove` for git worktrees, falls back to directory removal for plain
 directories, supports `--dry-run`, and requires `--force` when the workspace is dirty or cannot be
 verified as a git workspace.
+
+`symphony run recover` scans the run ledger for active run records that have not updated within the
+configured age threshold. It reports stale records by default and marks them failed only when
+`--apply` is passed.
 
 `symphony status` reads `log/status.json` when the daemon has written a current snapshot. If that
 file is missing, it falls back to `.symphony/runs/*.json` so recent run attempts remain inspectable
