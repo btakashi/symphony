@@ -222,6 +222,50 @@ def run_fail(
     typer.echo(f"error: {updated.error}")
 
 
+@run_app.command("recover")
+def run_recover(
+    older_than_minutes: Annotated[
+        int,
+        typer.Option(
+            "--older-than-minutes",
+            help="Only recover active runs not updated within this many minutes.",
+            min=1,
+        ),
+    ] = 60,
+    apply: Annotated[
+        bool,
+        typer.Option("--apply", help="Mark matching stale active runs failed."),
+    ] = False,
+    ledger_dir: Annotated[
+        Path,
+        typer.Option("--ledger-dir", help="Directory containing run ledger JSON files."),
+    ] = RUN_LEDGER_DIR,
+) -> None:
+    """Find stale active run ledger entries and optionally mark them failed."""
+
+    try:
+        recovered = _recover_stale_runs(
+            RunLedger(ledger_dir),
+            older_than_minutes=older_than_minutes,
+            apply=apply,
+        )
+    except RunLedgerError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    if not recovered:
+        typer.echo("No stale active runs.")
+        return
+
+    action = "marked failed" if apply else "would mark failed"
+    for run in recovered:
+        typer.echo(
+            f"{run.run_id} {run.issue_identifier}: {action}; "
+            f"status={run.status} updated_at={run.updated_at.isoformat()} "
+            f"workspace={run.workspace_path}"
+        )
+
+
 @app.command("status")
 def status(
     json_output: Annotated[
@@ -307,6 +351,7 @@ class CleanupResult:
 
 
 _TERMINAL_RUN_STATUSES = {"succeeded", "failed", "cancelled"}
+_ACTIVE_RUN_STATUSES = {"queued", "starting", "running", "waiting_for_permission"}
 
 
 @run_app.command("cleanup")
@@ -366,6 +411,45 @@ def _fail_run(
     )
     ledger.write(updated)
     return updated
+
+
+def _recover_stale_runs(
+    ledger: RunLedger,
+    *,
+    older_than_minutes: int,
+    apply: bool = False,
+    now: datetime | None = None,
+) -> list[RunMetadata]:
+    if older_than_minutes < 1:
+        raise RunStateError("older_than_minutes must be at least 1")
+
+    timestamp = now or _utc_now()
+    stale_runs = [
+        run
+        for run in ledger.list()
+        if run.status in _ACTIVE_RUN_STATUSES
+        and (timestamp - run.updated_at).total_seconds() >= older_than_minutes * 60
+    ]
+    if not apply:
+        return stale_runs
+
+    recovered: list[RunMetadata] = []
+    for run in stale_runs:
+        reason = (
+            "Recovered stale active run: "
+            f"status {run.status} unchanged since {run.updated_at.isoformat()}"
+        )
+        updated = run.model_copy(
+            update={
+                "status": "failed",
+                "updated_at": timestamp,
+                "completed_at": timestamp,
+                "error": reason,
+            }
+        )
+        ledger.write(updated)
+        recovered.append(updated)
+    return recovered
 
 
 def _cleanup_run_workspace(
