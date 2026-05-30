@@ -17,7 +17,13 @@ from symphony.models import RunMetadata, StatusSnapshot
 from symphony.orchestrator import OrchestratorCycleResult
 from symphony.run_ledger import RunLedger, RunLedgerError
 from symphony.runner.claude_headless import ClaudeHeadlessRunnerError, parse_structured_handoff
-from symphony.runtime import find_workflow_path, run_daemon_from_workflow, run_once_from_workflow
+from symphony.runtime import (
+    RuntimeCheck,
+    check_workflow,
+    find_workflow_path,
+    run_daemon_from_workflow,
+    run_once_from_workflow,
+)
 from symphony.runtime_paths import RUN_LEDGER_DIR, STATUS_SNAPSHOT_PATH
 
 app = typer.Typer(help="Python implementation of Symphony.")
@@ -79,6 +85,32 @@ def daemon(
         typer.echo(f"{prefix} {result.issue.identifier}: {result.status} ({result.run_id})")
 
     asyncio.run(run_daemon_from_workflow(workflow, cycles=cycles, on_cycle=report))
+
+
+@app.command("doctor")
+def doctor(
+    workflow_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--workflow",
+            help="Path to WORKFLOW.md. Defaults to searching from the current directory.",
+        ),
+    ] = None,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Emit machine-readable JSON.")
+    ] = False,
+) -> None:
+    """Check whether a workflow is ready for local daemon execution."""
+
+    workflow = workflow_path or find_workflow_path(Path.cwd())
+    checks = asyncio.run(check_workflow(workflow))
+    if json_output:
+        typer.echo(_json({"checks": [_check_json(check) for check in checks]}))
+    else:
+        typer.echo(_format_checks(checks))
+
+    if any(check.status == "fail" for check in checks):
+        raise typer.Exit(code=1)
 
 
 @app.command("runs")
@@ -233,6 +265,18 @@ def _json_default(value: object) -> object:
     if isinstance(value, StatusSnapshot | RunMetadata):
         return value.model_dump(mode="json")
     raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
+def _check_json(check: RuntimeCheck) -> dict[str, str]:
+    return {
+        "name": check.name,
+        "status": check.status,
+        "message": check.message,
+    }
+
+
+def _format_checks(checks: list[RuntimeCheck]) -> str:
+    return "\n".join(f"{check.status.upper():4} {check.name}: {check.message}" for check in checks)
 
 
 class PublishError(RuntimeError):

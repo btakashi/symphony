@@ -70,6 +70,7 @@ uv run pytest -m spike
 
 ```bash
 uv run symphony --help
+uv run symphony doctor --workflow ../WORKFLOW.md
 uv run symphony run-once --workflow ../WORKFLOW.md
 uv run symphony daemon --workflow ../WORKFLOW.md
 uv run symphony daemon --workflow ../WORKFLOW.md --cycles 3
@@ -89,6 +90,9 @@ after a process exit or restart.
 `symphony daemon` reuses the same workflow runtime in a polling loop. It processes at most one
 eligible issue per cycle, sleeps for `polling.interval_ms` between cycles, and accepts `--cycles`
 for bounded smoke runs.
+
+`symphony doctor` checks workflow loading, tracker connectivity, workspace root writability, Claude
+headless executable resolution, and the subprocess environment allowlist before starting a daemon.
 
 ## Trackers
 

@@ -11,6 +11,7 @@ from symphony.log_events import StatusSnapshotStore
 from symphony.models import Issue, RunAttempt, RunMetadata, StatusSnapshot
 from symphony.orchestrator import OrchestratorCycleResult
 from symphony.run_ledger import RunLedger
+from symphony.runtime import RuntimeCheck
 
 
 def test_cli_help() -> None:
@@ -91,6 +92,63 @@ def test_daemon_reports_bounded_cycles(tmp_path: Path, monkeypatch: pytest.Monke
     assert result.exit_code == 0
     assert "cycle 1: SYMP-1: succeeded (run-1)" in result.output
     assert "cycle 2: no ready issues" in result.output
+
+
+def test_doctor_reports_checks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    workflow = tmp_path / "WORKFLOW.md"
+    workflow.write_text("---\n---\n\nDo work.\n", encoding="utf-8")
+
+    async def fake_check_workflow(workflow_path: Path) -> list[RuntimeCheck]:
+        assert workflow_path == workflow
+        return [
+            RuntimeCheck("workflow", "pass", "loaded"),
+            RuntimeCheck("environment", "warn", "PATH is not in environment.allow"),
+        ]
+
+    monkeypatch.setattr("symphony.cli.check_workflow", fake_check_workflow)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["doctor", "--workflow", str(workflow)])
+
+    assert result.exit_code == 0
+    assert "PASS workflow: loaded" in result.output
+    assert "WARN environment: PATH is not in environment.allow" in result.output
+
+
+def test_doctor_exits_nonzero_on_failed_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workflow = tmp_path / "WORKFLOW.md"
+    workflow.write_text("---\n---\n\nDo work.\n", encoding="utf-8")
+
+    async def fake_check_workflow(_workflow_path: Path) -> list[RuntimeCheck]:
+        return [RuntimeCheck("tracker", "fail", "not authenticated")]
+
+    monkeypatch.setattr("symphony.cli.check_workflow", fake_check_workflow)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["doctor", "--workflow", str(workflow)])
+
+    assert result.exit_code == 1
+    assert "FAIL tracker: not authenticated" in result.output
+
+
+def test_doctor_json_reports_checks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    workflow = tmp_path / "WORKFLOW.md"
+    workflow.write_text("---\n---\n\nDo work.\n", encoding="utf-8")
+
+    async def fake_check_workflow(_workflow_path: Path) -> list[RuntimeCheck]:
+        return [RuntimeCheck("workflow", "pass", "loaded")]
+
+    monkeypatch.setattr("symphony.cli.check_workflow", fake_check_workflow)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["doctor", "--workflow", str(workflow), "--json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {
+        "checks": [{"message": "loaded", "name": "workflow", "status": "pass"}]
+    }
 
 
 def test_runs_lists_recent_runs_newest_first(tmp_path: Path) -> None:

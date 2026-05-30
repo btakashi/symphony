@@ -4,7 +4,13 @@ import pytest
 
 from symphony.models import Issue
 from symphony.orchestrator import OrchestratorCycleResult
-from symphony.runtime import SymphonyRuntimeError, find_workflow_path, run_daemon_from_workflow
+from symphony.runtime import (
+    RuntimeCheck,
+    SymphonyRuntimeError,
+    check_workflow,
+    find_workflow_path,
+    run_daemon_from_workflow,
+)
 
 WORKFLOW_TEXT = """---
 tracker:
@@ -53,7 +59,11 @@ async def test_run_daemon_from_workflow_runs_bounded_cycles(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     workflow = tmp_path / "WORKFLOW.md"
-    workflow.write_text(WORKFLOW_TEXT, encoding="utf-8")
+    workspace_root = tmp_path / "workspaces"
+    workflow.write_text(
+        WORKFLOW_TEXT.replace("/tmp/symphony-workspaces", workspace_root.as_posix()),
+        encoding="utf-8",
+    )
     results = [
         OrchestratorCycleResult(
             issue=Issue(id="1", identifier="ONE", title="One", state="open"),
@@ -128,3 +138,51 @@ async def test_run_daemon_from_workflow_rejects_invalid_cycle_limit(tmp_path: Pa
 
     with pytest.raises(SymphonyRuntimeError, match="cycles"):
         await run_daemon_from_workflow(workflow, cycles=0)
+
+
+@pytest.mark.asyncio
+async def test_check_workflow_reports_readiness_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workflow = tmp_path / "WORKFLOW.md"
+    workspace_root = tmp_path / "workspaces"
+    workflow.write_text(
+        WORKFLOW_TEXT.replace("/tmp/symphony-workspaces", workspace_root.as_posix()),
+        encoding="utf-8",
+    )
+
+    class FakeTracker:
+        async def check_supported_version(self) -> None:
+            return None
+
+    def fake_build_tracker(_config: object) -> FakeTracker:
+        return FakeTracker()
+
+    monkeypatch.setattr("symphony.runtime._build_tracker", fake_build_tracker)
+
+    checks = await check_workflow(workflow, which=lambda _executable: "/usr/local/bin/claude")
+
+    assert checks == [
+        RuntimeCheck("workflow", "pass", f"loaded {workflow}"),
+        RuntimeCheck(
+            "workspace",
+            "pass",
+            f"workspace root can be created under {tmp_path}",
+        ),
+        RuntimeCheck("claude", "pass", "found Claude executable: /usr/local/bin/claude"),
+        RuntimeCheck("environment", "warn", "PATH is not in environment.allow"),
+        RuntimeCheck("tracker", "pass", "memory tracker is reachable"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_check_workflow_reports_config_failure(tmp_path: Path) -> None:
+    workflow = tmp_path / "WORKFLOW.md"
+    workflow.write_text("---\ntracker:\n  kind: jira\n---\n\nDo work.\n", encoding="utf-8")
+
+    checks = await check_workflow(workflow)
+
+    assert len(checks) == 1
+    assert checks[0].name == "workflow"
+    assert checks[0].status == "fail"
+    assert "workspace" in checks[0].message
