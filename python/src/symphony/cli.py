@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
 import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -287,11 +288,55 @@ class RunStateError(RuntimeError):
     """Raised when a run ledger state transition is invalid."""
 
 
+class CleanupError(RuntimeError):
+    """Raised when a run workspace cannot be cleaned safely."""
+
+
 @dataclass(frozen=True)
 class PublishResult:
     branch: str
     commit_sha: str
     pr_url: str
+
+
+@dataclass(frozen=True)
+class CleanupResult:
+    workspace_path: Path
+    removed: bool
+    method: str
+
+
+_TERMINAL_RUN_STATUSES = {"succeeded", "failed", "cancelled"}
+
+
+@run_app.command("cleanup")
+def run_cleanup(
+    run_id: Annotated[str, typer.Argument(help="Run ID whose workspace should be removed.")],
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Remove even if the workspace is dirty or not a git repo."),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Report what would be removed without deleting it."),
+    ] = False,
+    ledger_dir: Annotated[
+        Path,
+        typer.Option("--ledger-dir", help="Directory containing run ledger JSON files."),
+    ] = RUN_LEDGER_DIR,
+) -> None:
+    """Remove a terminal run's workspace after safety checks."""
+
+    try:
+        run = RunLedger(ledger_dir).read(run_id)
+        result = _cleanup_run_workspace(run, force=force, dry_run=dry_run)
+    except (RunLedgerError, CleanupError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(f"workspace: {result.workspace_path}")
+    typer.echo(f"removed: {str(result.removed).lower()}")
+    typer.echo(f"method: {result.method}")
 
 
 def _recent_runs(runs: list[RunMetadata], *, limit: int) -> list[RunMetadata]:
@@ -321,6 +366,64 @@ def _fail_run(
     )
     ledger.write(updated)
     return updated
+
+
+def _cleanup_run_workspace(
+    run: RunMetadata,
+    *,
+    force: bool = False,
+    dry_run: bool = False,
+) -> CleanupResult:
+    if run.status not in _TERMINAL_RUN_STATUSES:
+        raise CleanupError(f"Run is not cleanable because status is {run.status}")
+    if not run.workspace_path.exists():
+        raise CleanupError(f"Workspace unavailable: {run.workspace_path}")
+    if not run.workspace_path.is_dir():
+        raise CleanupError(f"Workspace path is not a directory: {run.workspace_path}")
+
+    git_status = _workspace_git_status(run.workspace_path)
+    if isinstance(git_status, list):
+        if git_status and not force:
+            raise CleanupError(
+                f"Workspace has uncommitted changes; use --force to remove: {run.workspace_path}"
+            )
+    elif not force:
+        raise CleanupError(
+            f"Unable to verify workspace is clean; use --force to remove: {git_status}"
+        )
+
+    method = _cleanup_method(run.workspace_path)
+    if dry_run:
+        return CleanupResult(workspace_path=run.workspace_path, removed=False, method=method)
+
+    if method == "git worktree remove":
+        _remove_git_worktree(run.workspace_path, force=force)
+    else:
+        shutil.rmtree(run.workspace_path)
+    return CleanupResult(workspace_path=run.workspace_path, removed=True, method=method)
+
+
+def _cleanup_method(workspace_path: Path) -> str:
+    git_file = workspace_path / ".git"
+    if git_file.is_file():
+        return "git worktree remove"
+    return "rmtree"
+
+
+def _remove_git_worktree(workspace_path: Path, *, force: bool) -> None:
+    try:
+        common_dir = _command_stdout(
+            ["git", "-C", workspace_path.as_posix(), "rev-parse", "--git-common-dir"],
+            cwd=workspace_path,
+            failure_message="Unable to find git worktree metadata",
+        )
+        command = ["git", "worktree", "remove"]
+        if force:
+            command.append("--force")
+        command.append(workspace_path.as_posix())
+        _run_command(command, cwd=Path(common_dir).resolve().parent)
+    except PublishError as exc:
+        raise CleanupError(str(exc)) from exc
 
 
 def _run_details(run: RunMetadata) -> dict[str, object]:

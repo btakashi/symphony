@@ -76,12 +76,21 @@ uv run symphony daemon --workflow ../WORKFLOW.md
 uv run symphony daemon --workflow ../WORKFLOW.md --cycles 3
 uv run symphony status
 uv run symphony status --json
+uv run symphony runs
+uv run symphony run show <run-id>
+uv run symphony run publish <run-id>
+uv run symphony run cleanup <run-id>
 ```
 
 `symphony run-once` loads `WORKFLOW.md`, checks the local Beads CLI, claims the first ready issue,
 creates or reuses its workspace, runs `hooks.after_create` for new workspaces, and dispatches the
 issue through the configured `claude.headless` runner. Fresh run-once workspaces are created as git
 worktrees so the dispatched agent retains local Beads access from inside the workspace.
+
+`symphony run cleanup` removes a terminal run's workspace after checking that the workspace is clean.
+It uses `git worktree remove` for git worktrees, falls back to directory removal for plain
+directories, supports `--dry-run`, and requires `--force` when the workspace is dirty or cannot be
+verified as a git workspace.
 
 `symphony status` reads `log/status.json` when the daemon has written a current snapshot. If that
 file is missing, it falls back to `.symphony/runs/*.json` so recent run attempts remain inspectable

@@ -355,6 +355,150 @@ def test_run_publish_rejects_non_succeeded_run(tmp_path: Path) -> None:
     assert "Run is not publishable because status is running" in result.output
 
 
+def test_run_cleanup_removes_clean_terminal_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ledger_dir = tmp_path / ".symphony" / "runs"
+    workspace = tmp_path / "workspaces" / "symphony-1"
+    workspace.mkdir(parents=True)
+    (workspace / "output.txt").write_text("done\n", encoding="utf-8")
+    RunLedger(ledger_dir).write(
+        _metadata(tmp_path, "run-1").model_copy(
+            update={"status": "succeeded", "completed_at": _dt(12, 1)}
+        )
+    )
+
+    def fake_workspace_git_status(_workspace: Path) -> list[str]:
+        return []
+
+    monkeypatch.setattr("symphony.cli._workspace_git_status", fake_workspace_git_status)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["run", "cleanup", "run-1", "--ledger-dir", str(ledger_dir)])
+
+    assert result.exit_code == 0
+    assert f"workspace: {workspace}" in result.output
+    assert "removed: true" in result.output
+    assert "method: rmtree" in result.output
+    assert not workspace.exists()
+
+
+def test_run_cleanup_dry_run_keeps_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ledger_dir = tmp_path / ".symphony" / "runs"
+    workspace = tmp_path / "workspaces" / "symphony-1"
+    workspace.mkdir(parents=True)
+    RunLedger(ledger_dir).write(
+        _metadata(tmp_path, "run-1").model_copy(
+            update={"status": "failed", "completed_at": _dt(12, 1)}
+        )
+    )
+
+    def fake_workspace_git_status(_workspace: Path) -> list[str]:
+        return []
+
+    monkeypatch.setattr("symphony.cli._workspace_git_status", fake_workspace_git_status)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app, ["run", "cleanup", "run-1", "--dry-run", "--ledger-dir", str(ledger_dir)]
+    )
+
+    assert result.exit_code == 0
+    assert "removed: false" in result.output
+    assert workspace.exists()
+
+
+def test_run_cleanup_rejects_non_terminal_run(tmp_path: Path) -> None:
+    ledger_dir = tmp_path / ".symphony" / "runs"
+    workspace = tmp_path / "workspaces" / "symphony-1"
+    workspace.mkdir(parents=True)
+    RunLedger(ledger_dir).write(_metadata(tmp_path, "run-1"))
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["run", "cleanup", "run-1", "--ledger-dir", str(ledger_dir)])
+
+    assert result.exit_code == 1
+    assert "Run is not cleanable because status is running" in result.output
+    assert workspace.exists()
+
+
+def test_run_cleanup_rejects_dirty_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ledger_dir = tmp_path / ".symphony" / "runs"
+    workspace = tmp_path / "workspaces" / "symphony-1"
+    workspace.mkdir(parents=True)
+    RunLedger(ledger_dir).write(
+        _metadata(tmp_path, "run-1").model_copy(
+            update={"status": "succeeded", "completed_at": _dt(12, 1)}
+        )
+    )
+
+    def fake_workspace_git_status(_workspace: Path) -> list[str]:
+        return [" M output.txt"]
+
+    monkeypatch.setattr("symphony.cli._workspace_git_status", fake_workspace_git_status)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["run", "cleanup", "run-1", "--ledger-dir", str(ledger_dir)])
+
+    assert result.exit_code == 1
+    assert "Workspace has uncommitted changes" in result.output
+    assert workspace.exists()
+
+
+def test_run_cleanup_uses_git_worktree_remove(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ledger_dir = tmp_path / ".symphony" / "runs"
+    workspace = tmp_path / "workspaces" / "symphony-1"
+    workspace.mkdir(parents=True)
+    (workspace / ".git").write_text("gitdir: /repo/.git/worktrees/symphony-1\n", encoding="utf-8")
+    RunLedger(ledger_dir).write(
+        _metadata(tmp_path, "run-1").model_copy(
+            update={"status": "succeeded", "completed_at": _dt(12, 1)}
+        )
+    )
+    commands: list[tuple[list[str], Path]] = []
+
+    def fake_workspace_git_status(_workspace: Path) -> list[str]:
+        return []
+
+    def fake_run_command(
+        command: list[str], *, cwd: Path, failure_message: str | None = None
+    ) -> object:
+        del failure_message
+        commands.append((command, cwd))
+        if command == ["git", "-C", workspace.as_posix(), "status", "--short"]:
+            return _CommandResult(stdout="")
+        if command == [
+            "git",
+            "-C",
+            workspace.as_posix(),
+            "rev-parse",
+            "--git-common-dir",
+        ]:
+            return _CommandResult(stdout=(tmp_path / "repo" / ".git").as_posix() + "\n")
+        if command == ["git", "worktree", "remove", workspace.as_posix()]:
+            return _CommandResult(stdout="")
+        raise AssertionError(f"Unexpected command: {command}")
+
+    monkeypatch.setattr("symphony.cli._workspace_git_status", fake_workspace_git_status)
+    monkeypatch.setattr("symphony.cli._run_command", fake_run_command)
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["run", "cleanup", "run-1", "--ledger-dir", str(ledger_dir)])
+
+    assert result.exit_code == 0
+    assert "method: git worktree remove" in result.output
+    assert commands[-1] == (
+        ["git", "worktree", "remove", workspace.as_posix()],
+        tmp_path / "repo",
+    )
+
+
 def test_run_fail_marks_active_run_failed(tmp_path: Path) -> None:
     ledger_dir = tmp_path / ".symphony" / "runs"
     RunLedger(ledger_dir).write(_metadata(tmp_path, "run-1"))
